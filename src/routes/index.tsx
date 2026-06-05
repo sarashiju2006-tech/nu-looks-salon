@@ -51,7 +51,7 @@ const config = {
   },
   contact: {
     address: "238, 12th Main Rd, HAL 2nd Stage, Indiranagar, Bengaluru 560008",
-    phone: "+91 9673200967",
+    phone: "+91 7204926382",
     instagram: "@luxestudio.blr",
     instagramUrl: "https://instagram.com",
     mapsEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3888.0241555932125!2d77.63940697460791!3d12.970306087345012!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bae16a7fb45b053%3A0xd5c3780186e8c3!2s12th%20Main%20Rd%2C%20Indiranagar%2C%20Bengaluru%2C%20Karnataka%20560008!5e0!3m2!1sen!2sin!4v1780654927086!5m2!1sen!2sin",
