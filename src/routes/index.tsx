@@ -61,19 +61,6 @@ const config = {
 };
 
 export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: `${config.brand.name} — Hair Salon in Bengaluru` },
-      { name: "description", content: config.brand.tagline },
-      { property: "og:title", content: config.brand.name },
-      { property: "og:description", content: config.brand.tagline },
-      { property: "og:type", content: "website" },
-      { property: "og:url", content: "/" },
-    ],
-    links: [
-      { rel: "canonical", href: "/" },
-    ],
-  }),
   component: Index,
 });
 
