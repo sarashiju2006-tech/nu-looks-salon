@@ -26,7 +26,7 @@ const config = {
   about: {
     eyebrow: "About the studio",
     title: "A quieter kind of luxury.",
-    body: "Tucked away on a leafy lane in Indiranagar, Luxe Studio is a small team of senior stylists obsessed with healthy hair and honest advice. We take fewer clients a day so every visit feels unhurried — just thoughtful consultation, considered craft, and a cup of chai while you settle in.",
+    body: "Tucked away on a leafy lane in Indiranagar, Luxe Studio is a small team of senior stylists obsessed with healthy hair and honest advice. We take fewer clients a day so every visit feels unhurried, just thoughtful consultation, considered craft, and a cup of chai while you settle in.",
   },
   services: [
     { name: "Signature Haircut", desc: "Consultation, wash, precision cut and blow-dry.", price: "₹500" },
@@ -46,7 +46,7 @@ const config = {
   ],
   booking: {
     title: "Reserve your chair",
-    body: "Pick a time that suits you — confirmation lands in your inbox within minutes.",
+    body: "Pick a time that suits you, confirmation lands in your inbox within minutes.",
     embedUrl: "https://cal.com/sara-ggak17/hair-appointment", // drop in Cal.com embed URL here
   },
   contact: {
