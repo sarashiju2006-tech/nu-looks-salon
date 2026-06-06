@@ -7,6 +7,7 @@ import g3 from "@/assets/g3.jpg";
 import g4 from "@/assets/g4.jpg";
 import g5 from "@/assets/g5.jpg";
 import g6 from "@/assets/g6.jpg";
+import BookingWidget from '@/components/BookingWidget'
 
 // ============================================================
 // SITE CONFIG — swap these to re-skin for any client salon
@@ -286,27 +287,8 @@ function Index() {
               {config.booking.body}
             </p>
           </div>
-          <div className="reveal overflow-hidden rounded-2xl border border-border bg-card">
-  {config.booking.embedUrl ? (
-    <div className="relative">
-  <iframe
-    src={config.booking.embedUrl}
-    title="Booking"
-    className="h-[640px] w-full"
-  />
-  <div className="absolute bottom-0 left-0 right-0 h-20 bg-card" />
-</div>
-  ) : (  
-    <div className="flex h-[420px] flex-col items-center justify-center gap-4 p-8 text-center md:h-[520px]">
-      <p className="font-display text-2xl">Cal.com embed lives here</p>
-      
-        <a href={`tel:${config.contact.phone.replace(/\s/g, "")}`}
-        className="mt-2 rounded-full bg-primary px-6 py-3 text-sm text-primary-foreground"
-      >
-        Or call to book
-      </a>
-    </div>
-  )}
+         <div className="reveal overflow-hidden rounded-2xl border border-border bg-card">
+  <BookingWidget />
 </div>
         </div>
       </section>
