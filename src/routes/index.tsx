@@ -68,6 +68,7 @@ export const Route = createFileRoute("/")({
 function Index() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const [showAllServices, setShowAllServices] = useState(false);
   useEffect(() => {
   if (typeof window !== "undefined" && (window as any).Cal) {
     (window as any).Cal("init", "hair-appointment", {origin: "https://app.cal.com"});
@@ -235,20 +236,32 @@ function Index() {
             </p>
           </div>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {config.services.map((s) => (
-              <article
-                key={s.name}
-                className="reveal group rounded-2xl border border-border/60 bg-card p-7 transition-all duration-300 hover:-translate-y-1 hover:border-accent/60 hover:shadow-[0_20px_60px_-30px_rgba(0,0,0,0.25)]"
-              >
-                <div className="flex items-baseline justify-between gap-4">
-                  <h3 className="font-display text-xl">{s.name}</h3>
-                  <span className="font-display text-lg text-accent">{s.price}</span>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{s.desc}</p>
-                <div className="mt-6 h-px w-10 bg-accent/60 transition-all duration-300 group-hover:w-20" />
-              </article>
-            ))}
-          </div>
+  {(showAllServices ? config.services : config.services.slice(0, 6)).map((s) => (
+    <article
+      key={s.name}
+      className="reveal group rounded-2xl border border-border/60 bg-card p-7 transition-all duration-300 hover:-translate-y-1 hover:border-accent/60 hover:shadow-[0_20px_60px_-30px_rgba(0,0,0,0.25)]"
+    >
+      <div className="flex items-baseline justify-between gap-4">
+        <h3 className="font-display text-xl">{s.name}</h3>
+        <span className="font-display text-lg text-accent">{s.price}</span>
+      </div>
+      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{s.desc}</p>
+      <div className="mt-6 h-px w-10 bg-accent/60 transition-all duration-300 group-hover:w-20" />
+    </article>
+  ))}
+</div>
+
+{config.services.length > 6 && (
+  <div className="mt-10 text-center">
+    <button
+      onClick={() => setShowAllServices(v => !v)}
+      className="inline-flex items-center gap-2 rounded-full border border-border px-7 py-3 text-sm transition-colors hover:border-accent hover:text-accent"
+    >
+      {showAllServices ? 'Show less' : `View full menu (${config.services.length} services)`}
+      <span aria-hidden>{showAllServices ? '↑' : '↓'}</span>
+    </button>
+  </div>
+)}
         </div>
       </section>
 
