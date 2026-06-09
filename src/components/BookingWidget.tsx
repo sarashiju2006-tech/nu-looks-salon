@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react'
-import { getServices, getStaff, getBookedSlots, generateAvailableSlots, createBooking, triggerConfirmationEmail  } from '../lib/bookings'
+import { getServices, getStaff, getBookedSlots, generateAvailableSlots, autoAssignStaff, createBooking, triggerConfirmationEmail } from '../lib/bookings'
 import { Service, Staff } from '../lib/types'
 import { supabase } from '../lib/supabase'
 
 const BUSINESS_ID = import.meta.env.VITE_BUSINESS_ID
 
 export default function BookingWidget() {
-  const [step, setStep] = useState(1)
   const [services, setServices] = useState<Service[]>([])
   const [staff, setStaff] = useState<Staff[]>([])
   const [availableSlots, setAvailableSlots] = useState<string[]>([])
+  const [bookedSlots, setBookedSlots] = useState<any[]>([])
 
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null)
@@ -32,14 +32,22 @@ export default function BookingWidget() {
   useEffect(() => {
     if (selectedService && selectedDate) {
       setLoading(true)
+      // When no preference, fetch ALL bookings (no staff filter) so we can check all stylists
       getBookedSlots(BUSINESS_ID, selectedStaff?.id || null, selectedDate)
         .then(booked => {
-          const slots = generateAvailableSlots(booked, selectedService.duration_minutes, selectedDate)
+          setBookedSlots(booked)
+          const slots = generateAvailableSlots(
+            booked,
+            selectedService.duration_minutes,
+            selectedDate,
+            selectedStaff?.id || null,
+            selectedStaff ? undefined : staff
+          )
           setAvailableSlots(slots)
         })
         .finally(() => setLoading(false))
     }
-  }, [selectedService, selectedStaff, selectedDate])
+  }, [selectedService, selectedStaff, selectedDate, staff])
 
   async function handleConfirm() {
     if (!selectedService || !selectedSlot || !customerName || !customerEmail || !customerPhone) {
@@ -51,23 +59,34 @@ export default function BookingWidget() {
     setError('')
 
     try {
+      // Auto-assign stylist if no preference selected
+      let assignedStaff = selectedStaff
+      if (!assignedStaff) {
+        assignedStaff = autoAssignStaff(
+          new Date(selectedSlot),
+          selectedService.duration_minutes,
+          bookedSlots,
+          staff
+        )
+      }
+
       const booking = await createBooking({
         business_id: BUSINESS_ID,
         service_id: selectedService.id,
-        staff_id: selectedStaff?.id,
+        staff_id: assignedStaff?.id,
         customer_name: customerName,
         customer_email: customerEmail,
         customer_phone: customerPhone,
         booking_datetime: selectedSlot,
       })
 
-      // Get staff refresh token if stylist was selected
+      // Get assigned staff's refresh token
       let staffRefreshToken = null
-      if (selectedStaff?.id) {
+      if (assignedStaff?.id) {
         const { data: staffData } = await supabase
           .from('staff')
           .select('google_refresh_token')
-          .eq('id', selectedStaff.id)
+          .eq('id', assignedStaff.id)
           .single()
         staffRefreshToken = staffData?.google_refresh_token
       }
@@ -80,7 +99,7 @@ export default function BookingWidget() {
         booking_datetime: selectedSlot,
         duration_minutes: selectedService.duration_minutes,
         service_name: selectedService.name,
-        staff_name: selectedStaff?.name,
+        staff_name: assignedStaff?.name,
         staff_refresh_token: staffRefreshToken,
         business_name: 'Luxe Studio',
         business_address: 'Indiranagar, Bengaluru',
@@ -122,7 +141,7 @@ export default function BookingWidget() {
     <div className="max-w-lg mx-auto p-6">
       <h2 className="text-2xl font-semibold mb-6">Book an Appointment</h2>
 
-      {/* Step 1: Service */}
+      {/* Service */}
       <div className="mb-6">
         <label className="block text-sm font-medium mb-2">Select Service</label>
         <select
@@ -143,7 +162,7 @@ export default function BookingWidget() {
         </select>
       </div>
 
-      {/* Step 2: Stylist (optional) */}
+      {/* Stylist */}
       <div className="mb-6">
         <label className="block text-sm font-medium mb-2">Preferred Stylist <span className="text-gray-400">(optional)</span></label>
         <select
@@ -162,7 +181,7 @@ export default function BookingWidget() {
         </select>
       </div>
 
-      {/* Step 3: Date */}
+      {/* Date */}
       <div className="mb-6">
         <label className="block text-sm font-medium mb-2">Select Date</label>
         <input
@@ -177,7 +196,7 @@ export default function BookingWidget() {
         />
       </div>
 
-      {/* Step 4: Time slot */}
+      {/* Time slots */}
       {selectedService && selectedDate && (
         <div className="mb-6">
           <label className="block text-sm font-medium mb-2">Select Time</label>
@@ -205,7 +224,7 @@ export default function BookingWidget() {
         </div>
       )}
 
-      {/* Step 5: Customer details */}
+      {/* Customer details */}
       {selectedSlot && (
         <div className="mb-6 space-y-3">
           <label className="block text-sm font-medium">Your Details</label>

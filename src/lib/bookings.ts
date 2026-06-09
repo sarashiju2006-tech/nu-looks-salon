@@ -26,13 +26,12 @@ export async function getBookedSlots(
   staffId: string | null,
   date: string
 ) {
-  // Use IST boundaries instead of UTC
   const startOfDayIST = `${date}T00:00:00+05:30`
   const endOfDayIST = `${date}T23:59:59+05:30`
 
   let query = supabase
     .from('bookings')
-    .select('booking_datetime, service_id, services(duration_minutes)')
+    .select('booking_datetime, service_id, staff_id, services(duration_minutes)')
     .eq('business_id', businessId)
     .gte('booking_datetime', startOfDayIST)
     .lte('booking_datetime', endOfDayIST)
@@ -47,10 +46,27 @@ export async function getBookedSlots(
   return data
 }
 
+function isStaffFreeForSlot(
+  staffId: string,
+  slotStart: Date,
+  slotEnd: Date,
+  bookedSlots: any[]
+) {
+  return !bookedSlots.some((booked: any) => {
+    if (booked.staff_id !== staffId) return false
+    const bookedStart = new Date(booked.booking_datetime)
+    const bookedDuration = booked.services?.duration_minutes || 60
+    const bookedEnd = new Date(bookedStart.getTime() + bookedDuration * 60000)
+    return slotStart < bookedEnd && slotEnd > bookedStart
+  })
+}
+
 export function generateAvailableSlots(
   bookedSlots: any[],
   serviceDuration: number,
-  date: string
+  date: string,
+  staffId?: string | null,
+  allStaff?: Staff[]
 ) {
   const startHour = 10
   const endHour = 19
@@ -65,20 +81,51 @@ export function generateAvailableSlots(
 
       if (slotEndIST > endOfBusinessIST) continue
 
-      const hasConflict = bookedSlots.some((booked: any) => {
-        const bookedStart = new Date(booked.booking_datetime)
-        const bookedDuration = booked.services?.duration_minutes || 60
-        const bookedEnd = new Date(bookedStart.getTime() + bookedDuration * 60000)
-        return slotTimeIST < bookedEnd && slotEndIST > bookedStart
-      })
-
-      if (!hasConflict) {
-        slots.push(slotTimeIST.toISOString())
+      if (staffId) {
+        // Specific stylist selected — check only their availability
+        const hasConflict = bookedSlots.some((booked: any) => {
+          const bookedStart = new Date(booked.booking_datetime)
+          const bookedDuration = booked.services?.duration_minutes || 60
+          const bookedEnd = new Date(bookedStart.getTime() + bookedDuration * 60000)
+          return slotTimeIST < bookedEnd && slotEndIST > bookedStart
+        })
+        if (!hasConflict) slots.push(slotTimeIST.toISOString())
+      } else if (allStaff && allStaff.length > 0) {
+        // No preference — check if at least one stylist is free
+        const anyFree = allStaff.some(s =>
+          isStaffFreeForSlot(s.id, slotTimeIST, slotEndIST, bookedSlots)
+        )
+        if (anyFree) slots.push(slotTimeIST.toISOString())
       }
     }
   }
 
   return slots
+}
+
+export function autoAssignStaff(
+  slotStart: Date,
+  serviceDuration: number,
+  bookedSlots: any[],
+  allStaff: Staff[]
+): Staff | null {
+  const slotEnd = new Date(slotStart.getTime() + serviceDuration * 60000)
+
+  // Filter to only free staff for this slot
+  const freeStaff = allStaff.filter(s =>
+    isStaffFreeForSlot(s.id, slotStart, slotEnd, bookedSlots)
+  )
+
+  if (freeStaff.length === 0) return null
+
+  // Pick the one with fewest bookings today
+  const bookingCounts = freeStaff.map(s => ({
+    staff: s,
+    count: bookedSlots.filter(b => b.staff_id === s.id).length
+  }))
+
+  bookingCounts.sort((a, b) => a.count - b.count)
+  return bookingCounts[0].staff
 }
 
 export async function createBooking(booking: Booking) {
