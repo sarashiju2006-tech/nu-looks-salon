@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getServices, getStaffAvailability, getBookedSlots, generateAvailableSlots, autoAssignStaff, createBooking, triggerConfirmationEmail } from '../lib/bookings'
+import { getServices, getStaffAvailability, getBookedSlots, generateAvailableSlots, autoAssignStaff, createBooking, triggerConfirmationEmail, getBreaks } from '../lib/bookings'
 import { Service, Staff } from '../lib/types'
 import { supabase } from '../lib/supabase'
 
@@ -38,15 +38,17 @@ export default function BookingWidget() {
       setLoading(true)
       Promise.all([
         getBookedSlots(BUSINESS_ID, selectedStaff?.id || null, selectedDate),
-        getStaffAvailability(BUSINESS_ID, selectedDate)
-      ]).then(([booked, enrichedStaff]) => {
+        getStaffAvailability(BUSINESS_ID, selectedDate),
+        getBreaks(BUSINESS_ID)
+      ]).then(([booked, enrichedStaff, breaks]) => {
         setBookedSlots(booked)
         const slots = generateAvailableSlots(
           booked,
           totalDuration,
           selectedDate,
           selectedStaff?.id || null,
-          selectedStaff ? enrichedStaff.filter(s => s.id === selectedStaff.id) : enrichedStaff
+          selectedStaff ? enrichedStaff.filter(s => s.id === selectedStaff.id) : enrichedStaff,
+          breaks
         )
         setAvailableSlots(slots)
       }).finally(() => setLoading(false))

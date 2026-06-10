@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { getBookedSlots, generateAvailableSlots, autoAssignStaff, getStaffAvailability, setStaffAvailability, triggerConfirmationEmail, updateStaffDefaultHours, setStaffDailyHours } from '../lib/bookings'
+import { getBookedSlots, generateAvailableSlots, autoAssignStaff, getStaffAvailability, setStaffAvailability, triggerConfirmationEmail, updateStaffDefaultHours, setStaffDailyHours, getBreaks, addBreak, updateBreak, deleteBreak } from '../lib/bookings'
 
 const BUSINESS_ID = import.meta.env.VITE_BUSINESS_ID
 
@@ -37,6 +37,12 @@ const [tempEnd, setTempEnd] = useState('')
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [breaks, setBreaks] = useState<any[]>([])
+const [editingBreak, setEditingBreak] = useState<any>(null)
+const [showAddBreak, setShowAddBreak] = useState(false)
+const [newBreakName, setNewBreakName] = useState('')
+const [newBreakStart, setNewBreakStart] = useState('')
+const [newBreakEnd, setNewBreakEnd] = useState('')
 
   const formTotalDuration = formServices.reduce((sum: number, s: any) => sum + s.duration_minutes, 0)
 
@@ -47,15 +53,17 @@ const [tempEnd, setTempEnd] = useState('')
       setSlotsLoading(true)
       Promise.all([
         getBookedSlots(BUSINESS_ID, formStaff?.id || null, formDate),
-        getStaffAvailability(BUSINESS_ID, formDate)
-      ]).then(([booked, enrichedStaff]) => {
+        getStaffAvailability(BUSINESS_ID, formDate),
+        getBreaks(BUSINESS_ID)
+      ]).then(([booked, enrichedStaff, breaks]) => {
         setFormBookedSlots(booked)
         const slots = generateAvailableSlots(
           booked,
           formTotalDuration,
           formDate,
           formStaff?.id || null,
-          formStaff ? enrichedStaff.filter(s => s.id === formStaff.id) : enrichedStaff
+          formStaff ? enrichedStaff.filter(s => s.id === formStaff.id) : enrichedStaff,
+          breaks
         )
         setFormSlots(slots)
         setFormSlot('')
@@ -70,7 +78,7 @@ const [tempEnd, setTempEnd] = useState('')
     const startOfDay = `${selectedDate}T00:00:00+05:30`
     const endOfDay = `${selectedDate}T23:59:59+05:30`
 
-    const [bookingsRes, staffRes, servicesRes, availabilityRes] = await Promise.all([
+    const [bookingsRes, staffRes, servicesRes, availabilityRes, breaksRes] = await Promise.all([
       supabase
         .from('bookings')
         .select('*, services(name, duration_minutes), staff(name)')
@@ -81,12 +89,14 @@ const [tempEnd, setTempEnd] = useState('')
       supabase.from('staff').select('*').eq('business_id', BUSINESS_ID),
       supabase.from('services').select('*').eq('business_id', BUSINESS_ID),
       getStaffAvailability(BUSINESS_ID, selectedDate),
+      getBreaks(BUSINESS_ID),
     ])
 
     setBookings(bookingsRes.data || [])
     setStaff(staffRes.data || [])
     setServices(servicesRes.data || [])
     setStaffWithAvailability(availabilityRes)
+    setBreaks(breaksRes || [])
     setLoading(false)
   }
 
@@ -111,6 +121,27 @@ const [tempEnd, setTempEnd] = useState('')
     await setStaffDailyHours(staffId, selectedDate, tempStart, tempEnd)
     setEditingDefault(false)
     setSettingsOpen(null)
+    fetchAll()
+  }
+  async function handleAddBreak() {
+    if (!newBreakName || !newBreakStart || !newBreakEnd) return
+    await addBreak(BUSINESS_ID, newBreakName, newBreakStart, newBreakEnd)
+    setShowAddBreak(false)
+    setNewBreakName('')
+    setNewBreakStart('')
+    setNewBreakEnd('')
+    fetchAll()
+  }
+
+  async function handleUpdateBreak() {
+    if (!editingBreak) return
+    await updateBreak(editingBreak.id, editingBreak.name, editingBreak.start_time, editingBreak.end_time)
+    setEditingBreak(null)
+    fetchAll()
+  }
+
+  async function handleDeleteBreak(breakId: string) {
+    await deleteBreak(breakId)
     fetchAll()
   }
 
@@ -279,7 +310,102 @@ const [tempEnd, setTempEnd] = useState('')
           <p className="text-sm text-muted-foreground">{bookings.length} appointment{bookings.length !== 1 ? 's' : ''}</p>
         </div>
 
+{/* Add booking form */}
+        {showAddForm && (
+          <div className="mb-8 border border-border rounded-2xl p-6 bg-card">
+            <h2 className="font-medium mb-4">New Manual Booking</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Customer Name *</label>
+                <input type="text" className="w-full border rounded-lg p-2.5 text-sm" value={formName} onChange={e => setFormName(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Phone</label>
+                <input type="tel" className="w-full border rounded-lg p-2.5 text-sm" value={formPhone} onChange={e => setFormPhone(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Email</label>
+                <input type="email" className="w-full border rounded-lg p-2.5 text-sm" value={formEmail} onChange={e => setFormEmail(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Stylist</label>
+                <select className="w-full border rounded-lg p-2.5 text-sm" value={formStaff?.id || ''} onChange={e => { const s = staff.find(s => s.id === e.target.value) || null; setFormStaff(s); setFormSlot('') }}>
+                  <option value="">No preference</option>
+                  {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Date *</label>
+                <input type="date" className="w-full border rounded-lg p-2.5 text-sm" value={formDate} onChange={e => { setFormDate(e.target.value); setFormSlot('') }} />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-muted-foreground mb-1 block">Services *</label>
+                <div className="space-y-1 max-h-48 overflow-y-auto border rounded-lg p-2">
+                  {services.map(s => {
+                    const selected = !!formServices.find((fs: any) => fs.id === s.id)
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => {
+                          setFormServices((prev: any[]) => {
+                            const exists = prev.find(fs => fs.id === s.id)
+                            return exists ? prev.filter(fs => fs.id !== s.id) : [...prev, s]
+                          })
+                          setFormSlot('')
+                        }}
+                        className={`w-full flex items-center justify-between p-2 rounded text-left text-sm transition-colors ${
+                          selected ? 'bg-black text-white' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <span>{s.name}</span>
+                        <span className="opacity-75">{s.duration_minutes}min · ₹{s.price}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {formServices.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {formServices.length} service{formServices.length > 1 ? 's' : ''} · {formTotalDuration} mins · ₹{formServices.reduce((sum: number, s: any) => sum + Number(s.price), 0)}
+                  </p>
+                )}
+              </div>
+            </div>
 
+            {formServices.length > 0 && formDate && (
+              <div className="mt-4">
+                <label className="text-xs text-muted-foreground mb-2 block">Select Time *</label>
+                {slotsLoading ? (
+                  <p className="text-sm text-gray-400">Loading slots...</p>
+                ) : formSlots.length === 0 ? (
+                  <p className="text-sm text-gray-400">No slots available for this date</p>
+                ) : (
+                  <div className="grid grid-cols-4 gap-2">
+                    {formSlots.map(slot => (
+                      <button key={slot} onClick={() => setFormSlot(slot)}
+                        className={`p-2 rounded-lg border text-sm ${formSlot === slot ? 'bg-black text-white border-black' : 'hover:border-black'}`}>
+                        {formatTime(slot)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mt-4">
+              <label className="text-xs text-muted-foreground mb-1 block">Notes</label>
+              <input type="text" placeholder="e.g. Called in, wants Priya specifically" className="w-full border rounded-lg p-2.5 text-sm" value={formNotes} onChange={e => setFormNotes(e.target.value)} />
+            </div>
+
+            {saveError && <p className="text-red-500 text-sm mt-3">{saveError}</p>}
+            <div className="flex gap-3 mt-4">
+              <button onClick={handleAddBooking} disabled={saving} className="bg-black text-white px-5 py-2 rounded-lg text-sm disabled:opacity-50">
+                {saving ? 'Saving...' : 'Save Booking'}
+              </button>
+              <button onClick={() => { setShowAddForm(false); resetForm() }} className="border px-5 py-2 rounded-lg text-sm">Cancel</button>
+            </div>
+          </div>
+        )}
         {/* Who's in today */}
 <div className="mb-8 border border-border rounded-2xl p-5 bg-card">
   <h2 className="font-medium mb-4 text-sm">
@@ -415,102 +541,106 @@ const [tempEnd, setTempEnd] = useState('')
   </div>
 </div>
 
-        {/* Add booking form */}
-        {showAddForm && (
-          <div className="mb-8 border border-border rounded-2xl p-6 bg-card">
-            <h2 className="font-medium mb-4">New Manual Booking</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Customer Name *</label>
-                <input type="text" className="w-full border rounded-lg p-2.5 text-sm" value={formName} onChange={e => setFormName(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Phone</label>
-                <input type="tel" className="w-full border rounded-lg p-2.5 text-sm" value={formPhone} onChange={e => setFormPhone(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Email</label>
-                <input type="email" className="w-full border rounded-lg p-2.5 text-sm" value={formEmail} onChange={e => setFormEmail(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Stylist</label>
-                <select className="w-full border rounded-lg p-2.5 text-sm" value={formStaff?.id || ''} onChange={e => { const s = staff.find(s => s.id === e.target.value) || null; setFormStaff(s); setFormSlot('') }}>
-                  <option value="">No preference</option>
-                  {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Date *</label>
-                <input type="date" className="w-full border rounded-lg p-2.5 text-sm" value={formDate} onChange={e => { setFormDate(e.target.value); setFormSlot('') }} />
-              </div>
-              <div className="col-span-2">
-                <label className="text-xs text-muted-foreground mb-1 block">Services *</label>
-                <div className="space-y-1 max-h-48 overflow-y-auto border rounded-lg p-2">
-                  {services.map(s => {
-                    const selected = !!formServices.find((fs: any) => fs.id === s.id)
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                          setFormServices((prev: any[]) => {
-                            const exists = prev.find(fs => fs.id === s.id)
-                            return exists ? prev.filter(fs => fs.id !== s.id) : [...prev, s]
-                          })
-                          setFormSlot('')
-                        }}
-                        className={`w-full flex items-center justify-between p-2 rounded text-left text-sm transition-colors ${
-                          selected ? 'bg-black text-white' : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <span>{s.name}</span>
-                        <span className="opacity-75">{s.duration_minutes}min · ₹{s.price}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-                {formServices.length > 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {formServices.length} service{formServices.length > 1 ? 's' : ''} · {formTotalDuration} mins · ₹{formServices.reduce((sum: number, s: any) => sum + Number(s.price), 0)}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {formServices.length > 0 && formDate && (
-              <div className="mt-4">
-                <label className="text-xs text-muted-foreground mb-2 block">Select Time *</label>
-                {slotsLoading ? (
-                  <p className="text-sm text-gray-400">Loading slots...</p>
-                ) : formSlots.length === 0 ? (
-                  <p className="text-sm text-gray-400">No slots available for this date</p>
-                ) : (
-                  <div className="grid grid-cols-4 gap-2">
-                    {formSlots.map(slot => (
-                      <button key={slot} onClick={() => setFormSlot(slot)}
-                        className={`p-2 rounded-lg border text-sm ${formSlot === slot ? 'bg-black text-white border-black' : 'hover:border-black'}`}>
-                        {formatTime(slot)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="mt-4">
-              <label className="text-xs text-muted-foreground mb-1 block">Notes</label>
-              <input type="text" placeholder="e.g. Called in, wants Priya specifically" className="w-full border rounded-lg p-2.5 text-sm" value={formNotes} onChange={e => setFormNotes(e.target.value)} />
-            </div>
-
-            {saveError && <p className="text-red-500 text-sm mt-3">{saveError}</p>}
-            <div className="flex gap-3 mt-4">
-              <button onClick={handleAddBooking} disabled={saving} className="bg-black text-white px-5 py-2 rounded-lg text-sm disabled:opacity-50">
-                {saving ? 'Saving...' : 'Save Booking'}
-              </button>
-              <button onClick={() => { setShowAddForm(false); resetForm() }} className="border px-5 py-2 rounded-lg text-sm">Cancel</button>
-            </div>
+        {/* Breaks */}
+        <div className="mb-8 border border-border rounded-2xl p-5 bg-card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-medium text-sm">Breaks</h2>
+            <button
+              onClick={() => setShowAddBreak(v => !v)}
+              className="text-xs border px-3 py-1.5 rounded-lg hover:border-black"
+            >
+              + Add break
+            </button>
           </div>
-        )}
+
+          {showAddBreak && (
+            <div className="mb-4 p-3 border border-border rounded-xl bg-background">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Break name"
+                  className="flex-1 border rounded-lg p-2 text-sm"
+                  value={newBreakName}
+                  onChange={e => setNewBreakName(e.target.value)}
+                />
+                <input
+                  type="time"
+                  className="border rounded-lg p-2 text-sm"
+                  value={newBreakStart}
+                  onChange={e => setNewBreakStart(e.target.value)}
+                />
+                <span className="text-muted-foreground text-sm">to</span>
+                <input
+                  type="time"
+                  className="border rounded-lg p-2 text-sm"
+                  value={newBreakEnd}
+                  onChange={e => setNewBreakEnd(e.target.value)}
+                />
+                <button
+                  onClick={handleAddBreak}
+                  className="bg-black text-white px-3 py-2 rounded-lg text-xs"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {breaks.map(b => (
+              <div key={b.id} className="flex items-center justify-between p-3 border border-border rounded-xl text-sm">
+                {editingBreak?.id === b.id ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <input
+                      type="text"
+                      className="flex-1 border rounded-lg p-2 text-sm"
+                      value={editingBreak.name}
+                      onChange={e => setEditingBreak({ ...editingBreak, name: e.target.value })}
+                    />
+                    <input
+                      type="time"
+                      className="border rounded-lg p-2 text-sm"
+                      value={editingBreak.start_time}
+                      onChange={e => setEditingBreak({ ...editingBreak, start_time: e.target.value })}
+                    />
+                    <span className="text-muted-foreground">to</span>
+                    <input
+                      type="time"
+                      className="border rounded-lg p-2 text-sm"
+                      value={editingBreak.end_time}
+                      onChange={e => setEditingBreak({ ...editingBreak, end_time: e.target.value })}
+                    />
+                    <button onClick={handleUpdateBreak} className="bg-black text-white px-3 py-1.5 rounded-lg text-xs">Save</button>
+                    <button onClick={() => setEditingBreak(null)} className="border px-3 py-1.5 rounded-lg text-xs">Cancel</button>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <p className="font-medium">{b.name}</p>
+                      <p className="text-xs text-muted-foreground">{b.start_time?.slice(0,5)} – {b.end_time?.slice(0,5)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setEditingBreak({ ...b })}
+                        className="text-xs border px-3 py-1.5 rounded-lg hover:border-black"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBreak(b.id)}
+                        className="text-xs text-red-500 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        
 
         
         {/* Bookings list */}

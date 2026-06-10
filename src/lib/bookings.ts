@@ -66,7 +66,8 @@ export function generateAvailableSlots(
   serviceDuration: number,
   date: string,
   staffId?: string | null,
-  allStaff?: Staff[]
+  allStaff?: Staff[],
+  breaks?: any[]
 ) {
   const slotInterval = 30
   const slots: string[] = []
@@ -85,6 +86,10 @@ export function generateAvailableSlots(
       for (let m = 0; m < 60; m += slotInterval) {
         if (h === startHour && m < startMin) continue
         const slotTimeIST = new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+05:30`)
+        // Don't show slots that have already passed or are less than 1 hour away
+const now = new Date()
+const oneHourFromNow = new Date(now.getTime() + 60 * 60000)
+if (slotTimeIST < oneHourFromNow) continue
         const slotEndIST = new Date(slotTimeIST.getTime() + serviceDuration * 60000)
         if (slotEndIST > endOfBusinessIST) continue
 
@@ -94,7 +99,12 @@ export function generateAvailableSlots(
           const bookedEnd = new Date(bookedStart.getTime() + bookedDuration * 60000)
           return slotTimeIST < bookedEnd && slotEndIST > bookedStart
         })
-        if (!hasConflict) slots.push(slotTimeIST.toISOString())
+        const duringBreak = (breaks || []).some(b => {
+  const breakStart = new Date(`${date}T${b.start_time}+05:30`)
+  const breakEnd = new Date(`${date}T${b.end_time}+05:30`)
+  return slotTimeIST < breakEnd && slotEndIST > breakStart
+})
+if (!hasConflict && !duringBreak) slots.push(slotTimeIST.toISOString())
       }
     }
   } else if (allStaff && allStaff.length > 0) {
@@ -117,6 +127,10 @@ export function generateAvailableSlots(
       for (let m = 0; m < 60; m += slotInterval) {
         if (h === startHour && m < startMin) continue
         const slotTimeIST = new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+05:30`)
+        // Don't show slots that have already passed or are less than 1 hour away
+const now = new Date()
+const oneHourFromNow = new Date(now.getTime() + 60 * 60000)
+if (slotTimeIST < oneHourFromNow) continue
         const slotEndIST = new Date(slotTimeIST.getTime() + serviceDuration * 60000)
         if (slotEndIST > endOfBusinessIST) continue
 
@@ -128,7 +142,12 @@ export function generateAvailableSlots(
           if (slotTimeIST < staffStart || slotEndIST > staffEnd) return false
           return isStaffFreeForSlot(s.id, slotTimeIST, slotEndIST, bookedSlots)
         })
-        if (anyFree) slots.push(slotTimeIST.toISOString())
+        const duringBreak = (breaks || []).some(b => {
+  const breakStart = new Date(`${date}T${b.start_time}+05:30`)
+  const breakEnd = new Date(`${date}T${b.end_time}+05:30`)
+  return slotTimeIST < breakEnd && slotEndIST > breakStart
+})
+if (anyFree && !duringBreak) slots.push(slotTimeIST.toISOString())
       }
     }
   }
@@ -294,5 +313,36 @@ export async function setStaffDailyHours(
       start_time: startTime,
       end_time: endTime,
     }, { onConflict: 'staff_id,date' })
+  if (error) throw error
+}export async function getBreaks(businessId: string) {
+  const { data, error } = await supabase
+    .from('breaks')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('start_time')
+  if (error) throw error
+  return data
+}
+
+export async function addBreak(businessId: string, name: string, startTime: string, endTime: string) {
+  const { error } = await supabase
+    .from('breaks')
+    .insert({ business_id: businessId, name, start_time: startTime, end_time: endTime })
+  if (error) throw error
+}
+
+export async function updateBreak(breakId: string, name: string, startTime: string, endTime: string) {
+  const { error } = await supabase
+    .from('breaks')
+    .update({ name, start_time: startTime, end_time: endTime })
+    .eq('id', breakId)
+  if (error) throw error
+}
+
+export async function deleteBreak(breakId: string) {
+  const { error } = await supabase
+    .from('breaks')
+    .delete()
+    .eq('id', breakId)
   if (error) throw error
 }
