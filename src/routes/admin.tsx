@@ -1,8 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { getBookedSlots, generateAvailableSlots, autoAssignStaff } from '../lib/bookings'
-import { triggerConfirmationEmail } from '../lib/bookings'
+import { getBookedSlots, generateAvailableSlots, autoAssignStaff, getStaffAvailability, setStaffAvailability, triggerConfirmationEmail, updateStaffDefaultHours, setStaffDailyHours } from '../lib/bookings'
 
 const BUSINESS_ID = import.meta.env.VITE_BUSINESS_ID
 
@@ -13,13 +12,19 @@ export const Route = createFileRoute('/admin')({
 function Admin() {
   const [bookings, setBookings] = useState<any[]>([])
   const [staff, setStaff] = useState<any[]>([])
+  const [staffWithAvailability, setStaffWithAvailability] = useState<any[]>([])
   const [services, setServices] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
+  const [reassigning, setReassigning] = useState<string | null>(null)
+  const [reassignStaffIds, setReassignStaffIds] = useState<Record<string, string>>({})
+  const [settingsOpen, setSettingsOpen] = useState<string | null>(null)
+const [editingDefault, setEditingDefault] = useState(false)
+const [tempStart, setTempStart] = useState('')
+const [tempEnd, setTempEnd] = useState('')
 
-  // New booking form state
-  const [formService, setFormService] = useState<any>(null)
+  const [formServices, setFormServices] = useState<any[]>([])
   const [formStaff, setFormStaff] = useState<any>(null)
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0])
   const [formSlot, setFormSlot] = useState('')
@@ -33,36 +38,39 @@ function Admin() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  useEffect(() => {
-    fetchAll()
-  }, [selectedDate])
+  const formTotalDuration = formServices.reduce((sum: number, s: any) => sum + s.duration_minutes, 0)
+
+  useEffect(() => { fetchAll() }, [selectedDate])
 
   useEffect(() => {
-    if (formService && formDate) {
+    if (formServices.length > 0 && formDate) {
       setSlotsLoading(true)
-      getBookedSlots(BUSINESS_ID, formStaff?.id || null, formDate)
-        .then(booked => {
-          setFormBookedSlots(booked)
-          const slots = generateAvailableSlots(
-            booked,
-            formService.duration_minutes,
-            formDate,
-            formStaff?.id || null,
-            formStaff ? undefined : staff
-          )
-          setFormSlots(slots)
-          setFormSlot('')
-        })
-        .finally(() => setSlotsLoading(false))
+      Promise.all([
+        getBookedSlots(BUSINESS_ID, formStaff?.id || null, formDate),
+        getStaffAvailability(BUSINESS_ID, formDate)
+      ]).then(([booked, enrichedStaff]) => {
+        setFormBookedSlots(booked)
+        const slots = generateAvailableSlots(
+          booked,
+          formTotalDuration,
+          formDate,
+          formStaff?.id || null,
+          formStaff ? enrichedStaff.filter(s => s.id === formStaff.id) : enrichedStaff
+        )
+        setFormSlots(slots)
+        setFormSlot('')
+      }).finally(() => setSlotsLoading(false))
+    } else {
+      setFormSlots([])
     }
-  }, [formService, formStaff, formDate, staff])
+  }, [formServices, formStaff, formDate])
 
   async function fetchAll() {
     setLoading(true)
     const startOfDay = `${selectedDate}T00:00:00+05:30`
     const endOfDay = `${selectedDate}T23:59:59+05:30`
 
-    const [bookingsRes, staffRes, servicesRes] = await Promise.all([
+    const [bookingsRes, staffRes, servicesRes, availabilityRes] = await Promise.all([
       supabase
         .from('bookings')
         .select('*, services(name, duration_minutes), staff(name)')
@@ -72,37 +80,106 @@ function Admin() {
         .order('booking_datetime', { ascending: true }),
       supabase.from('staff').select('*').eq('business_id', BUSINESS_ID),
       supabase.from('services').select('*').eq('business_id', BUSINESS_ID),
+      getStaffAvailability(BUSINESS_ID, selectedDate),
     ])
 
     setBookings(bookingsRes.data || [])
     setStaff(staffRes.data || [])
     setServices(servicesRes.data || [])
+    setStaffWithAvailability(availabilityRes)
     setLoading(false)
   }
 
+  async function handleToggleAvailability(staffId: string, currentlyAvailable: boolean) {
+    await setStaffAvailability(staffId, selectedDate, !currentlyAvailable)
+    fetchAll()
+  }
+  async function handleSaveDefaultHours(staffId: string) {
+    await updateStaffDefaultHours(staffId, tempStart, tempEnd)
+    // Clear today's override so new default takes effect
+    await supabase
+      .from('staff_availability')
+      .delete()
+      .eq('staff_id', staffId)
+      .eq('date', selectedDate)
+    setEditingDefault(false)
+    setSettingsOpen(null)
+    await fetchAll()
+  }
+
+  async function handleSaveDailyHours(staffId: string) {
+    await setStaffDailyHours(staffId, selectedDate, tempStart, tempEnd)
+    setEditingDefault(false)
+    setSettingsOpen(null)
+    fetchAll()
+  }
+
+  async function handleReassign(bookingId: string) {
+    const reassignStaffId = reassignStaffIds[bookingId]
+    if (!reassignStaffId) return
+    setReassigning(bookingId)
+    try {
+      const booking = bookings.find(b => b.id === bookingId)
+
+      const { data: oldStaffData } = await supabase
+        .from('staff')
+        .select('google_refresh_token')
+        .eq('id', booking.staff_id)
+        .single()
+
+      await supabase.from('bookings').update({
+        staff_id: reassignStaffId,
+        google_event_id: null
+      }).eq('id', bookingId)
+
+      const { data: newStaffData } = await supabase
+        .from('staff')
+        .select('google_refresh_token, name')
+        .eq('id', reassignStaffId)
+        .single()
+
+      await triggerConfirmationEmail({
+        id: booking.id,
+        customer_name: booking.customer_name,
+        customer_email: booking.customer_email || '',
+        customer_phone: booking.customer_phone || '',
+        booking_datetime: booking.booking_datetime,
+        duration_minutes: booking.services?.duration_minutes || 60,
+        service_name: booking.services?.name || '',
+        staff_name: newStaffData?.name,
+        staff_refresh_token: newStaffData?.google_refresh_token,
+        old_google_event_id: booking.google_event_id,
+        old_staff_refresh_token: oldStaffData?.google_refresh_token,
+        business_name: 'Luxe Studio',
+        business_address: 'Indiranagar, Bengaluru',
+        business_phone: '+91 98765 43210',
+      })
+
+      setReassigning(null)
+      setReassignStaffIds(prev => { const next = { ...prev }; delete next[bookingId]; return next })
+      fetchAll()
+    } catch (err) {
+      console.error('Reassign failed:', err)
+      setReassigning(null)
+    }
+  }
+
   async function handleAddBooking() {
-    if (!formName || !formService || !formSlot) {
+    if (!formName || formServices.length === 0 || !formSlot) {
       setSaveError('Please fill in name, service and time')
       return
     }
-
     setSaving(true)
     setSaveError('')
-
     try {
       let assignedStaff = formStaff
       if (!assignedStaff) {
-        assignedStaff = autoAssignStaff(
-          new Date(formSlot),
-          formService.duration_minutes,
-          formBookedSlots,
-          staff
-        )
+        assignedStaff = autoAssignStaff(new Date(formSlot), formTotalDuration, formBookedSlots, staff)
       }
 
       const { data: insertData, error } = await supabase.from('bookings').insert({
         business_id: BUSINESS_ID,
-        service_id: formService.id,
+        service_id: formServices[0].id,
         staff_id: assignedStaff?.id || null,
         customer_name: formName,
         customer_email: formEmail || null,
@@ -114,37 +191,38 @@ function Admin() {
 
       if (error) throw error
 
-      setShowAddForm(false)
-      // Trigger Google Calendar event
-try {
-  let staffRefreshToken = null
-  if (assignedStaff?.id) {
-    const { data: staffData } = await supabase
-      .from('staff')
-      .select('google_refresh_token')
-      .eq('id', assignedStaff.id)
-      .single()
-    staffRefreshToken = staffData?.google_refresh_token
-  }
+      if (formServices.length > 1) {
+        await supabase.from('booking_services').insert(
+          formServices.map((s: any) => ({ booking_id: insertData.id, service_id: s.id }))
+        )
+      }
 
-  await triggerConfirmationEmail({
-    id: insertData.id,
-    customer_name: formName,
-    customer_email: formEmail || '',
-    customer_phone: formPhone || '',
-    booking_datetime: formSlot,
-    duration_minutes: formService.duration_minutes,
-    service_name: formService.name,
-    staff_name: assignedStaff?.name,
-    staff_refresh_token: staffRefreshToken,
-    business_name: 'Luxe Studio',
-    business_address: 'Indiranagar, Bengaluru',
-    business_phone: '+91 98765 43210',
-  })
-} catch (e) {
-  // Calendar sync failed silently — booking is still saved
-  console.error('Calendar sync failed:', e)
-}
+      try {
+        let staffRefreshToken = null
+        if (assignedStaff?.id) {
+          const { data: staffData } = await supabase
+            .from('staff').select('google_refresh_token').eq('id', assignedStaff.id).single()
+          staffRefreshToken = staffData?.google_refresh_token
+        }
+        await triggerConfirmationEmail({
+          id: insertData.id,
+          customer_name: formName,
+          customer_email: formEmail || '',
+          customer_phone: formPhone || '',
+          booking_datetime: formSlot,
+          duration_minutes: formTotalDuration,
+          service_name: formServices.map((s: any) => s.name).join(', '),
+          staff_name: assignedStaff?.name,
+          staff_refresh_token: staffRefreshToken,
+          business_name: 'Luxe Studio',
+          business_address: 'Indiranagar, Bengaluru',
+          business_phone: '+91 98765 43210',
+        })
+      } catch (e) {
+        console.error('Calendar sync failed:', e)
+      }
+
+      setShowAddForm(false)
       resetForm()
       fetchAll()
     } catch (err: any) {
@@ -155,7 +233,7 @@ try {
   }
 
   function resetForm() {
-    setFormService(null)
+    setFormServices([])
     setFormStaff(null)
     setFormDate(new Date().toISOString().split('T')[0])
     setFormSlot('')
@@ -168,19 +246,13 @@ try {
   }
 
   async function handleCancel(bookingId: string) {
-    await supabase
-      .from('bookings')
-      .update({ status: 'cancelled' })
-      .eq('id', bookingId)
+    await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', bookingId)
     fetchAll()
   }
 
   function formatTime(iso: string) {
     return new Date(iso).toLocaleTimeString('en-IN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: 'Asia/Kolkata',
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata',
     })
   }
 
@@ -201,6 +273,147 @@ try {
             + Add Booking
           </button>
         </div>
+        {/* Date picker */}
+        <div className="flex items-center gap-4 mb-6">
+          <input type="date" className="border rounded-lg p-2.5 text-sm" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
+          <p className="text-sm text-muted-foreground">{bookings.length} appointment{bookings.length !== 1 ? 's' : ''}</p>
+        </div>
+
+
+        {/* Who's in today */}
+<div className="mb-8 border border-border rounded-2xl p-5 bg-card">
+  <h2 className="font-medium mb-4 text-sm">
+  Who's in on {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+  {selectedDate === new Date().toISOString().split('T')[0] && (
+    <span className="text-muted-foreground font-normal ml-2">(today)</span>
+  )}
+</h2>
+  <div className="flex flex-col gap-3">
+    {staffWithAvailability.map(s => (
+      <div key={s.id}>
+        <div className={`flex items-center justify-between gap-4 px-4 py-2.5 rounded-xl border text-sm ${
+          s.is_available ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'
+        }`}>
+          <span className={s.is_available ? 'text-green-800' : 'text-gray-400'}>{s.name}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {s.today_start?.slice(0,5)} – {s.today_end?.slice(0,5)}
+            </span>
+            <button
+              onClick={() => {
+                if (settingsOpen === s.id) {
+                  setSettingsOpen(null)
+                  setEditingDefault(false)
+                } else {
+                  setSettingsOpen(s.id)
+                  setEditingDefault(false)
+                  setTempStart(s.today_start?.slice(0,5) || '10:00')
+                  setTempEnd(s.today_end?.slice(0,5) || '19:00')
+                }
+              }}
+              className="text-muted-foreground hover:text-foreground text-base"
+            >
+              ⚙
+            </button>
+            <button
+              onClick={() => handleToggleAvailability(s.id, s.is_available)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                s.is_available ? 'bg-green-500' : 'bg-gray-300'
+              }`}
+            >
+              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                s.is_available ? 'translate-x-4' : 'translate-x-1'
+              }`} />
+            </button>
+          </div>
+        </div>
+
+        {/* Settings panel */}
+        {settingsOpen === s.id && (
+          <div className="mt-2 p-4 border border-border rounded-xl bg-background text-sm space-y-3">
+            {!editingDefault ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Default hours</p>
+                    <p className="text-muted-foreground text-xs">{s.default_start_time?.slice(0,5)} – {s.default_end_time?.slice(0,5)}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setEditingDefault(true)
+                      setTempStart(s.default_start_time?.slice(0,5) || '10:00')
+                      setTempEnd(s.default_end_time?.slice(0,5) || '19:00')
+                    }}
+                    className="text-xs border px-3 py-1.5 rounded-lg hover:border-black"
+                  >
+                    Edit default
+                  </button>
+                </div>
+                <div className="border-t pt-3">
+                  <p className="font-medium mb-2">Change hours for today</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="time"
+                      className="border rounded-lg p-2 text-sm flex-1"
+                      value={tempStart}
+                      onChange={e => setTempStart(e.target.value)}
+                    />
+                    <span className="text-muted-foreground">to</span>
+                    <input
+                      type="time"
+                      className="border rounded-lg p-2 text-sm flex-1"
+                      value={tempEnd}
+                      onChange={e => setTempEnd(e.target.value)}
+                    />
+                    <button
+                      onClick={() => handleSaveDailyHours(s.id)}
+                      className="bg-black text-white px-3 py-2 rounded-lg text-xs"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div>
+                <p className="font-medium mb-2">Edit default hours for {s.name}</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="time"
+                    className="border rounded-lg p-2 text-sm flex-1"
+                    value={tempStart}
+                    onChange={e => setTempStart(e.target.value)}
+                  />
+                  <span className="text-muted-foreground">to</span>
+                  <input
+                    type="time"
+                    className="border rounded-lg p-2 text-sm flex-1"
+                    value={tempEnd}
+                    onChange={e => setTempEnd(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => handleSaveDefaultHours(s.id)}
+                    className="bg-black text-white px-4 py-2 rounded-lg text-xs"
+                  >
+                    Save default
+                  </button>
+                  <button
+                    onClick={() => setEditingDefault(false)}
+                    className="border px-4 py-2 rounded-lg text-xs"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    ))}
+  </div>
+</div>
 
         {/* Add booking form */}
         {showAddForm && (
@@ -209,81 +422,62 @@ try {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Customer Name *</label>
-                <input
-                  type="text"
-                  className="w-full border rounded-lg p-2.5 text-sm"
-                  value={formName}
-                  onChange={e => setFormName(e.target.value)}
-                />
+                <input type="text" className="w-full border rounded-lg p-2.5 text-sm" value={formName} onChange={e => setFormName(e.target.value)} />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Phone</label>
-                <input
-                  type="tel"
-                  className="w-full border rounded-lg p-2.5 text-sm"
-                  value={formPhone}
-                  onChange={e => setFormPhone(e.target.value)}
-                />
+                <input type="tel" className="w-full border rounded-lg p-2.5 text-sm" value={formPhone} onChange={e => setFormPhone(e.target.value)} />
               </div>
               <div>
-  <label className="text-xs text-muted-foreground mb-1 block">Email</label>
-  <input
-    type="email"
-    className="w-full border rounded-lg p-2.5 text-sm"
-    value={formEmail}
-    onChange={e => setFormEmail(e.target.value)}
-  />
-</div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Service *</label>
-                <select
-                  className="w-full border rounded-lg p-2.5 text-sm"
-                  value={formService?.id || ''}
-                  onChange={e => {
-                    const s = services.find(s => s.id === e.target.value) || null
-                    setFormService(s)
-                    setFormSlot('')
-                  }}
-                >
-                  <option value="">Select service...</option>
-                  {services.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} — ₹{s.price}</option>
-                  ))}
-                </select>
+                <label className="text-xs text-muted-foreground mb-1 block">Email</label>
+                <input type="email" className="w-full border rounded-lg p-2.5 text-sm" value={formEmail} onChange={e => setFormEmail(e.target.value)} />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Stylist</label>
-                <select
-                  className="w-full border rounded-lg p-2.5 text-sm"
-                  value={formStaff?.id || ''}
-                  onChange={e => {
-                    const s = staff.find(s => s.id === e.target.value) || null
-                    setFormStaff(s)
-                    setFormSlot('')
-                  }}
-                >
+                <select className="w-full border rounded-lg p-2.5 text-sm" value={formStaff?.id || ''} onChange={e => { const s = staff.find(s => s.id === e.target.value) || null; setFormStaff(s); setFormSlot('') }}>
                   <option value="">No preference</option>
-                  {staff.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
+                  {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
-              <div className="col-span-2">
+              <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Date *</label>
-                <input
-                  type="date"
-                  className="w-full border rounded-lg p-2.5 text-sm"
-                  value={formDate}
-                  onChange={e => {
-                    setFormDate(e.target.value)
-                    setFormSlot('')
-                  }}
-                />
+                <input type="date" className="w-full border rounded-lg p-2.5 text-sm" value={formDate} onChange={e => { setFormDate(e.target.value); setFormSlot('') }} />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-muted-foreground mb-1 block">Services *</label>
+                <div className="space-y-1 max-h-48 overflow-y-auto border rounded-lg p-2">
+                  {services.map(s => {
+                    const selected = !!formServices.find((fs: any) => fs.id === s.id)
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => {
+                          setFormServices((prev: any[]) => {
+                            const exists = prev.find(fs => fs.id === s.id)
+                            return exists ? prev.filter(fs => fs.id !== s.id) : [...prev, s]
+                          })
+                          setFormSlot('')
+                        }}
+                        className={`w-full flex items-center justify-between p-2 rounded text-left text-sm transition-colors ${
+                          selected ? 'bg-black text-white' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <span>{s.name}</span>
+                        <span className="opacity-75">{s.duration_minutes}min · ₹{s.price}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {formServices.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {formServices.length} service{formServices.length > 1 ? 's' : ''} · {formTotalDuration} mins · ₹{formServices.reduce((sum: number, s: any) => sum + Number(s.price), 0)}
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Available slots */}
-            {formService && formDate && (
+            {formServices.length > 0 && formDate && (
               <div className="mt-4">
                 <label className="text-xs text-muted-foreground mb-2 block">Select Time *</label>
                 {slotsLoading ? (
@@ -293,15 +487,8 @@ try {
                 ) : (
                   <div className="grid grid-cols-4 gap-2">
                     {formSlots.map(slot => (
-                      <button
-                        key={slot}
-                        onClick={() => setFormSlot(slot)}
-                        className={`p-2 rounded-lg border text-sm ${
-                          formSlot === slot
-                            ? 'bg-black text-white border-black'
-                            : 'hover:border-black'
-                        }`}
-                      >
+                      <button key={slot} onClick={() => setFormSlot(slot)}
+                        className={`p-2 rounded-lg border text-sm ${formSlot === slot ? 'bg-black text-white border-black' : 'hover:border-black'}`}>
                         {formatTime(slot)}
                       </button>
                     ))}
@@ -312,97 +499,111 @@ try {
 
             <div className="mt-4">
               <label className="text-xs text-muted-foreground mb-1 block">Notes</label>
-              <input
-                type="text"
-                placeholder="e.g. Called in, wants Priya specifically"
-                className="w-full border rounded-lg p-2.5 text-sm"
-                value={formNotes}
-                onChange={e => setFormNotes(e.target.value)}
-              />
+              <input type="text" placeholder="e.g. Called in, wants Priya specifically" className="w-full border rounded-lg p-2.5 text-sm" value={formNotes} onChange={e => setFormNotes(e.target.value)} />
             </div>
 
             {saveError && <p className="text-red-500 text-sm mt-3">{saveError}</p>}
             <div className="flex gap-3 mt-4">
-              <button
-                onClick={handleAddBooking}
-                disabled={saving}
-                className="bg-black text-white px-5 py-2 rounded-lg text-sm disabled:opacity-50"
-              >
+              <button onClick={handleAddBooking} disabled={saving} className="bg-black text-white px-5 py-2 rounded-lg text-sm disabled:opacity-50">
                 {saving ? 'Saving...' : 'Save Booking'}
               </button>
-              <button
-                onClick={() => { setShowAddForm(false); resetForm() }}
-                className="border px-5 py-2 rounded-lg text-sm"
-              >
-                Cancel
-              </button>
+              <button onClick={() => { setShowAddForm(false); resetForm() }} className="border px-5 py-2 rounded-lg text-sm">Cancel</button>
             </div>
           </div>
         )}
 
-        {/* Date picker */}
-        <div className="flex items-center gap-4 mb-6">
-          <input
-            type="date"
-            className="border rounded-lg p-2.5 text-sm"
-            value={selectedDate}
-            onChange={e => setSelectedDate(e.target.value)}
-          />
-          <p className="text-sm text-muted-foreground">{bookings.length} appointment{bookings.length !== 1 ? 's' : ''}</p>
-        </div>
-
+        
         {/* Bookings list */}
         {loading ? (
           <p className="text-muted-foreground">Loading...</p>
         ) : bookings.length === 0 ? (
           <div className="text-center py-16 border border-dashed border-border rounded-2xl">
             <p className="text-muted-foreground">No appointments for this day</p>
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="mt-4 text-sm text-accent hover:underline"
-            >
-              + Add one manually
-            </button>
+            <button onClick={() => setShowAddForm(true)} className="mt-4 text-sm text-accent hover:underline">+ Add one manually</button>
           </div>
         ) : (
           <div className="space-y-3">
-            {bookings.map(b => (
-              <div
-                key={b.id}
-                className={`flex items-center justify-between p-4 rounded-xl border ${
-                  b.status === 'cancelled' ? 'opacity-50 bg-muted' : 'bg-card border-border'
-                }`}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="text-center w-16">
-                    <p className="font-medium text-sm">{formatTime(b.booking_datetime)}</p>
+            {bookings.map(b => {
+              const assignedStaff = staffWithAvailability.find(s => s.id === b.staff_id)
+              const needsReassign = assignedStaff && b.status === 'confirmed' && (
+  !assignedStaff.is_available ||
+  (() => {
+    const bookingTime = new Date(b.booking_datetime)
+    const bookingEnd = new Date(bookingTime.getTime() + (b.services?.duration_minutes || 60) * 60000)
+    const staffStart = new Date(`${selectedDate}T${assignedStaff.today_start}+05:30`)
+    const staffEnd = new Date(`${selectedDate}T${assignedStaff.today_end}+05:30`)
+    return bookingTime < staffStart || bookingEnd > staffEnd
+  })()
+)
+
+              return (
+                <div key={b.id} className={`p-4 rounded-xl border ${
+                  b.status === 'cancelled' ? 'opacity-50 bg-muted' :
+                  needsReassign ? 'border-orange-300 bg-orange-50' :
+                  'bg-card border-border'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="text-center w-16">
+                        <p className="font-medium text-sm">{formatTime(b.booking_datetime)}</p>
+                      </div>
+                      <div>
+                        <p className="font-medium">{b.customer_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {b.services?.name} · {b.staff?.name || 'Unassigned'}
+                          {b.customer_phone && ` · ${b.customer_phone}`}
+                        </p>
+                        {b.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{b.notes}</p>}
+                        {needsReassign && <p className="text-xs text-orange-600 mt-0.5 font-medium">⚠ Stylist not available - reassign</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-xs px-2.5 py-1 rounded-full ${b.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {b.status}
+                      </span>
+                      {b.status === 'confirmed' && (
+                        <button onClick={() => handleCancel(b.id)} className="text-xs text-red-500 hover:underline">Cancel</button>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium">{b.customer_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {b.services?.name} · {b.staff?.name || 'Unassigned'}
-                      {b.customer_phone && ` · ${b.customer_phone}`}
-                    </p>
-                    {b.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{b.notes}</p>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`text-xs px-2.5 py-1 rounded-full ${
-                    b.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {b.status}
-                  </span>
-                  {b.status === 'confirmed' && (
-                    <button
-                      onClick={() => handleCancel(b.id)}
-                      className="text-xs text-red-500 hover:underline"
-                    >
-                      Cancel
-                    </button>
+
+                  {needsReassign && (
+                    <div className="mt-3 flex items-center gap-2 pt-3 border-t border-orange-200">
+                      <select
+                        className="flex-1 border rounded-lg p-2 text-sm"
+                        value={reassignStaffIds[b.id] || ''}
+                        onChange={e => setReassignStaffIds(prev => ({ ...prev, [b.id]: e.target.value }))}
+                      >
+                        <option value="">Select new stylist...</option>
+                        {staffWithAvailability.filter(s => s.is_available && s.id !== b.staff_id).map(s => {
+                          const slotStart = new Date(b.booking_datetime)
+                          const slotEnd = new Date(slotStart.getTime() + (b.services?.duration_minutes || 60) * 60000)
+                          const hasConflict = bookings.some(other => {
+                            if (other.staff_id !== s.id || other.status !== 'confirmed' || other.id === b.id) return false
+                            const otherStart = new Date(other.booking_datetime)
+                            const otherDuration = other.services?.duration_minutes || 60
+                            const otherEnd = new Date(otherStart.getTime() + otherDuration * 60000)
+                            return slotStart < otherEnd && slotEnd > otherStart
+                          })
+                          return (
+                            <option key={s.id} value={s.id} disabled={hasConflict}>
+                              {s.name}{hasConflict ? ' — busy' : ''}
+                            </option>
+                          )
+                        })}
+                      </select>
+                      <button
+                        onClick={() => handleReassign(b.id)}
+                        disabled={reassigning === b.id || !reassignStaffIds[b.id]}
+                        className="bg-black text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                      >
+                        {reassigning === b.id ? 'Reassigning...' : 'Reassign'}
+                      </button>
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

@@ -68,21 +68,26 @@ export function generateAvailableSlots(
   staffId?: string | null,
   allStaff?: Staff[]
 ) {
-  const startHour = 10
-  const endHour = 19
   const slotInterval = 30
   const slots: string[] = []
-  const endOfBusinessIST = new Date(`${date}T${String(endHour).padStart(2, '0')}:00:00+05:30`)
 
-  for (let hour = startHour; hour < endHour; hour++) {
-    for (let min = 0; min < 60; min += slotInterval) {
-      const slotTimeIST = new Date(`${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00+05:30`)
-      const slotEndIST = new Date(slotTimeIST.getTime() + serviceDuration * 60000)
+  if (staffId) {
+    // Specific stylist — use their hours
+    const staffMember = allStaff?.find(s => s.id === staffId)
+    const startTime = (staffMember as any)?.today_start || staffMember?.default_start_time || '10:00'
+    const endTime = (staffMember as any)?.today_end || staffMember?.default_end_time || '19:00'
+    const [startHour, startMin] = startTime.split(':').map(Number)
+    const [endHour, endMin] = endTime.split(':').map(Number)
 
-      if (slotEndIST > endOfBusinessIST) continue
+    const endOfBusinessIST = new Date(`${date}T${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}:00+05:30`)
 
-      if (staffId) {
-        // Specific stylist selected — check only their availability
+    for (let h = startHour; h <= endHour; h++) {
+      for (let m = 0; m < 60; m += slotInterval) {
+        if (h === startHour && m < startMin) continue
+        const slotTimeIST = new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+05:30`)
+        const slotEndIST = new Date(slotTimeIST.getTime() + serviceDuration * 60000)
+        if (slotEndIST > endOfBusinessIST) continue
+
         const hasConflict = bookedSlots.some((booked: any) => {
           const bookedStart = new Date(booked.booking_datetime)
           const bookedDuration = booked.services?.duration_minutes || 60
@@ -90,11 +95,39 @@ export function generateAvailableSlots(
           return slotTimeIST < bookedEnd && slotEndIST > bookedStart
         })
         if (!hasConflict) slots.push(slotTimeIST.toISOString())
-      } else if (allStaff && allStaff.length > 0) {
-        // No preference — check if at least one stylist is free
-        const anyFree = allStaff.some(s =>
-          isStaffFreeForSlot(s.id, slotTimeIST, slotEndIST, bookedSlots)
-        )
+      }
+    }
+  } else if (allStaff && allStaff.length > 0) {
+    // No preference — find slots where at least one stylist is free
+    // Use the widest possible window across all staff
+    const earliestStart = allStaff.reduce((earliest, s) => {
+      const t = (s as any).today_start || s.default_start_time || '10:00'
+      return t < earliest ? t : earliest
+    }, '19:00')
+    const latestEnd = allStaff.reduce((latest, s) => {
+      const t = (s as any).today_end || s.default_end_time || '19:00'
+      return t > latest ? t : latest
+    }, '10:00')
+
+    const [startHour, startMin] = earliestStart.split(':').map(Number)
+    const [endHour, endMin] = latestEnd.split(':').map(Number)
+    const endOfBusinessIST = new Date(`${date}T${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}:00+05:30`)
+
+    for (let h = startHour; h <= endHour; h++) {
+      for (let m = 0; m < 60; m += slotInterval) {
+        if (h === startHour && m < startMin) continue
+        const slotTimeIST = new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+05:30`)
+        const slotEndIST = new Date(slotTimeIST.getTime() + serviceDuration * 60000)
+        if (slotEndIST > endOfBusinessIST) continue
+
+        const anyFree = allStaff.some(s => {
+          const sStart = (s as any).today_start || s.default_start_time || '10:00'
+          const sEnd = (s as any).today_end || s.default_end_time || '19:00'
+          const staffStart = new Date(`${date}T${sStart}:00+05:30`)
+          const staffEnd = new Date(`${date}T${sEnd}:00+05:30`)
+          if (slotTimeIST < staffStart || slotEndIST > staffEnd) return false
+          return isStaffFreeForSlot(s.id, slotTimeIST, slotEndIST, bookedSlots)
+        })
         if (anyFree) slots.push(slotTimeIST.toISOString())
       }
     }
@@ -128,7 +161,7 @@ export function autoAssignStaff(
   return bookingCounts[0].staff
 }
 
-export async function createBooking(booking: Booking) {
+export async function createBooking(booking: Booking, serviceIds?: string[]) {
   const { data, error } = await supabase
     .from('bookings')
     .insert(booking)
@@ -136,6 +169,18 @@ export async function createBooking(booking: Booking) {
     .single()
 
   if (error) throw error
+
+  // If multiple services, insert into booking_services junction table
+  if (serviceIds && serviceIds.length > 0) {
+    const { error: servicesError } = await supabase
+      .from('booking_services')
+      .insert(serviceIds.map(sid => ({
+        booking_id: data.id,
+        service_id: sid
+      })))
+    if (servicesError) throw servicesError
+  }
+
   return data
 }
 
@@ -145,6 +190,8 @@ export async function triggerConfirmationEmail(bookingData: {
   customer_email: string
   customer_phone: string
   booking_datetime: string
+  old_google_event_id?: string
+old_staff_refresh_token?: string
   duration_minutes: number
   service_name: string
   staff_name?: string
@@ -171,4 +218,81 @@ export async function triggerConfirmationEmail(bookingData: {
   }
 
   return await response.json()
+}
+export async function getStaffAvailability(businessId: string, date: string) {
+  // Get all staff
+  const { data: allStaff } = await supabase
+    .from('staff')
+    .select('*')
+    .eq('business_id', businessId)
+
+  if (!allStaff) return []
+
+  // Get any availability overrides for this date
+  const { data: availability } = await supabase
+    .from('staff_availability')
+    .select('*')
+    .in('staff_id', allStaff.map(s => s.id))
+    .eq('date', date)
+
+  // Merge — if no override exists, staff is available by default
+  return allStaff.map(s => {
+    const override = availability?.find(a => a.staff_id === s.id)
+    const defaultStart = s.default_start_time || '10:00'
+    const defaultEnd = s.default_end_time || '19:00'
+    return {
+      ...s,
+      is_available: override ? override.is_available : true,
+      today_start: override?.start_time || defaultStart,
+      today_end: override?.end_time || defaultEnd,
+      default_start_time: defaultStart,
+      default_end_time: defaultEnd,
+    }
+  })
+}
+
+export async function setStaffAvailability(
+  staffId: string,
+  date: string,
+  isAvailable: boolean
+) {
+  const { error } = await supabase
+    .from('staff_availability')
+    .upsert({
+      staff_id: staffId,
+      date,
+      is_available: isAvailable,
+    }, { onConflict: 'staff_id,date' })
+
+  if (error) throw error
+}
+export async function updateStaffDefaultHours(
+  staffId: string,
+  startTime: string,
+  endTime: string
+) {
+  console.log('updateStaffDefaultHours called:', staffId, startTime, endTime)
+  const { error, data } = await supabase
+    .from('staff')
+    .update({ default_start_time: startTime, default_end_time: endTime })
+    .eq('id', staffId)
+    .select()
+  if (error) throw error
+}
+export async function setStaffDailyHours(
+  staffId: string,
+  date: string,
+  startTime: string,
+  endTime: string
+) {
+  const { error } = await supabase
+    .from('staff_availability')
+    .upsert({
+      staff_id: staffId,
+      date,
+      is_available: true,
+      start_time: startTime,
+      end_time: endTime,
+    }, { onConflict: 'staff_id,date' })
+  if (error) throw error
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getServices, getStaff, getBookedSlots, generateAvailableSlots, autoAssignStaff, createBooking, triggerConfirmationEmail } from '../lib/bookings'
+import { getServices, getStaffAvailability, getBookedSlots, generateAvailableSlots, autoAssignStaff, createBooking, triggerConfirmationEmail } from '../lib/bookings'
 import { Service, Staff } from '../lib/types'
 import { supabase } from '../lib/supabase'
 
@@ -11,7 +11,7 @@ export default function BookingWidget() {
   const [availableSlots, setAvailableSlots] = useState<string[]>([])
   const [bookedSlots, setBookedSlots] = useState<any[]>([])
 
-  const [selectedService, setSelectedService] = useState<Service | null>(null)
+  const [selectedServices, setSelectedServices] = useState<Service[]>([])
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null)
   const [selectedDate, setSelectedDate] = useState('')
   const [selectedSlot, setSelectedSlot] = useState('')
@@ -24,33 +24,48 @@ export default function BookingWidget() {
   const [confirmed, setConfirmed] = useState(false)
   const [error, setError] = useState('')
 
+  const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0)
+  const totalPrice = selectedServices.reduce((sum, s) => sum + Number(s.price), 0)
+
   useEffect(() => {
     getServices(BUSINESS_ID).then(setServices)
-    getStaff(BUSINESS_ID).then(setStaff)
+    getStaffAvailability(BUSINESS_ID, new Date().toISOString().split('T')[0]).then(setStaff)
   }, [])
 
+  
   useEffect(() => {
-    if (selectedService && selectedDate) {
+    if (selectedServices.length > 0 && selectedDate) {
       setLoading(true)
-      // When no preference, fetch ALL bookings (no staff filter) so we can check all stylists
-      getBookedSlots(BUSINESS_ID, selectedStaff?.id || null, selectedDate)
-        .then(booked => {
-          setBookedSlots(booked)
-          const slots = generateAvailableSlots(
-            booked,
-            selectedService.duration_minutes,
-            selectedDate,
-            selectedStaff?.id || null,
-            selectedStaff ? undefined : staff
-          )
-          setAvailableSlots(slots)
-        })
-        .finally(() => setLoading(false))
+      Promise.all([
+        getBookedSlots(BUSINESS_ID, selectedStaff?.id || null, selectedDate),
+        getStaffAvailability(BUSINESS_ID, selectedDate)
+      ]).then(([booked, enrichedStaff]) => {
+        setBookedSlots(booked)
+        const slots = generateAvailableSlots(
+          booked,
+          totalDuration,
+          selectedDate,
+          selectedStaff?.id || null,
+          selectedStaff ? enrichedStaff.filter(s => s.id === selectedStaff.id) : enrichedStaff
+        )
+        setAvailableSlots(slots)
+      }).finally(() => setLoading(false))
+    } else {
+      setAvailableSlots([])
     }
-  }, [selectedService, selectedStaff, selectedDate, staff])
+  }, [selectedServices, selectedStaff, selectedDate])
+
+  function toggleService(service: Service) {
+    setSelectedServices(prev => {
+      const exists = prev.find(s => s.id === service.id)
+      if (exists) return prev.filter(s => s.id !== service.id)
+      return [...prev, service]
+    })
+    setSelectedSlot('')
+  }
 
   async function handleConfirm() {
-    if (!selectedService || !selectedSlot || !customerName || !customerEmail || !customerPhone) {
+    if (selectedServices.length === 0 || !selectedSlot || !customerName || !customerEmail || !customerPhone) {
       setError('Please fill in all fields')
       return
     }
@@ -59,12 +74,11 @@ export default function BookingWidget() {
     setError('')
 
     try {
-      // Auto-assign stylist if no preference selected
       let assignedStaff = selectedStaff
       if (!assignedStaff) {
         assignedStaff = autoAssignStaff(
           new Date(selectedSlot),
-          selectedService.duration_minutes,
+          totalDuration,
           bookedSlots,
           staff
         )
@@ -72,15 +86,14 @@ export default function BookingWidget() {
 
       const booking = await createBooking({
         business_id: BUSINESS_ID,
-        service_id: selectedService.id,
+        service_id: selectedServices[0].id, // primary service for backwards compat
         staff_id: assignedStaff?.id,
         customer_name: customerName,
         customer_email: customerEmail,
         customer_phone: customerPhone,
         booking_datetime: selectedSlot,
-      })
+      }, selectedServices.map(s => s.id))
 
-      // Get assigned staff's refresh token
       let staffRefreshToken = null
       if (assignedStaff?.id) {
         const { data: staffData } = await supabase
@@ -97,8 +110,8 @@ export default function BookingWidget() {
         customer_email: customerEmail,
         customer_phone: customerPhone,
         booking_datetime: selectedSlot,
-        duration_minutes: selectedService.duration_minutes,
-        service_name: selectedService.name,
+        duration_minutes: totalDuration,
+        service_name: selectedServices.map(s => s.name).join(', '),
         staff_name: assignedStaff?.name,
         staff_refresh_token: staffRefreshToken,
         business_name: 'Luxe Studio',
@@ -141,25 +154,40 @@ export default function BookingWidget() {
     <div className="max-w-lg mx-auto p-6">
       <h2 className="text-2xl font-semibold mb-6">Book an Appointment</h2>
 
-      {/* Service */}
+      {/* Services checklist */}
       <div className="mb-6">
-        <label className="block text-sm font-medium mb-2">Select Service</label>
-        <select
-          className="w-full border rounded-lg p-3"
-          value={selectedService?.id || ''}
-          onChange={e => {
-            const s = services.find(s => s.id === e.target.value) || null
-            setSelectedService(s)
-            setSelectedSlot('')
-          }}
-        >
-          <option value="">Choose a service...</option>
-          {services.map(s => (
-            <option key={s.id} value={s.id}>
-              {s.name} — {s.duration_minutes} mins — ₹{s.price}
-            </option>
-          ))}
-        </select>
+        <label className="block text-sm font-medium mb-2">Select Services</label>
+        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+          {services.map(s => {
+            const selected = !!selectedServices.find(sel => sel.id === s.id)
+            return (
+              <button
+                key={s.id}
+                onClick={() => toggleService(s)}
+                className={`w-full flex items-center justify-between p-3 rounded-lg border text-left transition-colors ${
+                  selected ? 'bg-black text-white border-black' : 'hover:border-black'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                    selected ? 'bg-white border-white' : 'border-current'
+                  }`}>
+                    {selected && <span className="text-black text-xs">✓</span>}
+                  </div>
+                  <span className="text-sm">{s.name}</span>
+                </div>
+                <span className="text-sm opacity-75">{s.duration_minutes}min · ₹{s.price}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {selectedServices.length > 0 && (
+          <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm flex justify-between">
+            <span className="text-gray-600">{selectedServices.length} service{selectedServices.length > 1 ? 's' : ''} · {totalDuration} mins</span>
+            <span className="font-medium">₹{totalPrice}</span>
+          </div>
+        )}
       </div>
 
       {/* Stylist */}
@@ -174,7 +202,7 @@ export default function BookingWidget() {
             setSelectedSlot('')
           }}
         >
-          <option value="">No preference</option>
+          <option value="">No preference — we'll assign the best available</option>
           {staff.map(s => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
@@ -197,7 +225,7 @@ export default function BookingWidget() {
       </div>
 
       {/* Time slots */}
-      {selectedService && selectedDate && (
+      {selectedServices.length > 0 && selectedDate && (
         <div className="mb-6">
           <label className="block text-sm font-medium mb-2">Select Time</label>
           {loading ? (
