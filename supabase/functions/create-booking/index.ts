@@ -15,8 +15,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY")!;
     
-    console.log("URL:", supabaseUrl ? "found" : "missing")
-    console.log("Key:", serviceRoleKey ? "found" : "missing")
+    
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const booking = await req.json();

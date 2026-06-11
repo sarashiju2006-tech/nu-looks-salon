@@ -22,6 +22,7 @@ function Admin() {
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
+const [searchQuery, setSearchQuery] = useState('')
   const [reassigning, setReassigning] = useState<string | null>(null)
   const [reassignStaffIds, setReassignStaffIds] = useState<Record<string, string>>({})
   const [settingsOpen, setSettingsOpen] = useState<string | null>(null)
@@ -351,12 +352,12 @@ const [newBreakEnd, setNewBreakEnd] = useState('')
             + Add Booking
           </button>
         </div>
-        {/* Date picker */}
-        <div className="flex items-center gap-4 mb-6">
+        
+ {/* Date picker */}
+        <div className="flex items-center gap-3 mb-6">
           <input type="date" className="border rounded-lg p-2.5 text-sm" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
-          <p className="text-sm text-muted-foreground">{bookings.length} appointment{bookings.length !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-muted-foreground whitespace-nowrap">{bookings.length} appointment{bookings.length !== 1 ? 's' : ''}</p>
         </div>
-
 {/* Add booking form */}
         {showAddForm && (
           <div className="mb-8 border border-border rounded-2xl p-6 bg-card">
@@ -688,7 +689,18 @@ const [newBreakEnd, setNewBreakEnd] = useState('')
         </div>
 
         
+           {/* Search */}
+        <div className="mb-4">
+          <input
+            type="text"
+            placeholder="Search by name or phone..."
+            className="w-full border rounded-lg p-2.5 text-sm"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+        </div>
 
+        {/* Bookings list */}
         
         {/* Bookings list */}
         {loading ? (
@@ -700,7 +712,11 @@ const [newBreakEnd, setNewBreakEnd] = useState('')
           </div>
         ) : (
           <div className="space-y-3">
-            {bookings.map(b => {
+            {bookings.filter(b => {
+              if (!searchQuery) return true
+              const q = searchQuery.toLowerCase()
+              return b.customer_name?.toLowerCase().includes(q) || b.customer_phone?.includes(q)
+            }).map(b => {
               const assignedStaff = staffWithAvailability.find(s => s.id === b.staff_id)
               const needsReassign = assignedStaff && b.status === 'confirmed' && (
   !assignedStaff.is_available ||
