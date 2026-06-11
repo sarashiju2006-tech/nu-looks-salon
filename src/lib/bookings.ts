@@ -181,26 +181,29 @@ export function autoAssignStaff(
 }
 
 export async function createBooking(booking: Booking, serviceIds?: string[]) {
-  const { data, error } = await supabase
-    .from('bookings')
-    .insert(booking)
-    .select()
-    .single()
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-  if (error) throw error
+  const response = await fetch(`${supabaseUrl}/functions/v1/create-booking`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${supabaseAnonKey}`
+    },
+    body: JSON.stringify({ ...booking, service_ids: serviceIds || [] })
+  })
 
-  // If multiple services, insert into booking_services junction table
-  if (serviceIds && serviceIds.length > 0) {
-    const { error: servicesError } = await supabase
-      .from('booking_services')
-      .insert(serviceIds.map(sid => ({
-        booking_id: data.id,
-        service_id: sid
-      })))
-    if (servicesError) throw servicesError
+  if (response.status === 429) {
+    const err = await response.json()
+    throw new Error(err.error)
   }
 
-  return data
+  if (!response.ok) {
+    const err = await response.json()
+    throw new Error(err.error || 'Failed to create booking')
+  }
+
+  return await response.json()
 }
 
 export async function triggerConfirmationEmail(bookingData: {

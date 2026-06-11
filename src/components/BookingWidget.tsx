@@ -122,8 +122,12 @@ export default function BookingWidget() {
       })
 
       setConfirmed(true)
-    } catch (err) {
-      setError('Something went wrong. Please try again.')
+    } catch (err: any) {
+      if (err.message?.includes('Too many bookings')) {
+        setError('You have made too many bookings today. Please call us to book.')
+      } else {
+        setError('Something went wrong. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -140,6 +144,12 @@ export default function BookingWidget() {
 
   function getTodayString() {
     return new Date().toISOString().split('T')[0]
+  }
+
+  function getMaxDateString() {
+    const maxDate = new Date()
+    maxDate.setDate(maxDate.getDate() + 30)
+    return maxDate.toISOString().split('T')[0]
   }
 
   if (confirmed) {
@@ -218,6 +228,7 @@ export default function BookingWidget() {
           type="date"
           className="w-full border rounded-lg p-3"
           min={getTodayString()}
+          max={getMaxDateString()}
           value={selectedDate}
           onChange={e => {
             setSelectedDate(e.target.value)
