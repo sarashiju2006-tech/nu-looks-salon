@@ -22,7 +22,12 @@ export const Route = createFileRoute('/setup')({
   component: Setup,
 })
 
+const ADMIN_PIN = import.meta.env.VITE_ADMIN_PIN
+
 function Setup() {
+  const [unlocked, setUnlocked] = useState(sessionStorage.getItem('admin_unlocked') === 'true')
+  const [pin, setPin] = useState('')
+  const [pinError, setPinError] = useState(false)
   const [staff, setStaff] = useState<any[]>([])
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
@@ -111,6 +116,48 @@ function Setup() {
     if (!confirm('Disconnect this stylist\'s Google Calendar?')) return
     await supabase.from('staff').update({ google_refresh_token: null }).eq('id', staffId)
     loadStaff()
+  }
+
+  if (!unlocked) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-full max-w-sm p-8 border border-border rounded-2xl bg-card">
+          <h1 className="text-xl font-semibold mb-2">Admin Access</h1>
+          <p className="text-muted-foreground text-sm mb-6">Enter your PIN to continue.</p>
+          <input
+            type="password"
+            placeholder="Enter PIN"
+            className="w-full border rounded-lg p-3 text-sm mb-3"
+            value={pin}
+            onChange={e => { setPin(e.target.value); setPinError(false) }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                if (pin === ADMIN_PIN) {
+                  sessionStorage.setItem('admin_unlocked', 'true')
+                  setUnlocked(true)
+                } else {
+                  setPinError(true)
+                }
+              }
+            }}
+          />
+          {pinError && <p className="text-red-500 text-xs mb-3">Incorrect PIN</p>}
+          <button
+            onClick={() => {
+              if (pin === ADMIN_PIN) {
+                sessionStorage.setItem('admin_unlocked', 'true')
+                setUnlocked(true)
+              } else {
+                setPinError(true)
+              }
+            }}
+            className="w-full bg-black text-white py-3 rounded-lg text-sm font-medium"
+          >
+            Unlock
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (

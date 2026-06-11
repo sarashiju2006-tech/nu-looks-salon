@@ -3,6 +3,8 @@
 A production-ready, fully customizable salon website template with a custom booking system, Google Calendar sync, and an admin dashboard.
 
 ---
+what if someone blocks off everything for shits and giggles
+personalized breaks to the stylists. 
 
 ## What it does
 
