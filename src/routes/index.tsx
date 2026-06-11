@@ -36,6 +36,9 @@ const config = {
     { name: "Keratin Treatment", desc: "Frizz-free, salon-smooth finish for up to 5 months.", price: "₹4,500" },
     { name: "Hair Spa & Repair", desc: "Deep-conditioning ritual for tired, thirsty hair.", price: "₹1,200" },
     { name: "Bridal Styling", desc: "Trial + on-the-day hair styling for your wedding.", price: "₹8,000" },
+    { name: "Scalp Treatment", desc: "Targeted treatment for dry, oily or sensitive scalp.", price: "₹1,800" },
+    { name: "Olaplex Treatment", desc: "Bond-building repair for chemically treated hair.", price: "₹2,500" },
+    { name: "Blowout & Styling", desc: "Professional blowdry and finish for any occasion.", price: "₹800" },
   ],
   gallery: [
     { src: g1, alt: "Glossy styled hair", h: "row-span-2" },
@@ -99,7 +102,7 @@ function Index() {
     );
     document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
     return () => io.disconnect();
-  }, []);
+  }, [showAllServices]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
