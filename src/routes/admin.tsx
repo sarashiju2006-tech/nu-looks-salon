@@ -25,6 +25,11 @@ function Admin() {
 const [searchQuery, setSearchQuery] = useState('')
   const [reassigning, setReassigning] = useState<string | null>(null)
   const [reassignStaffIds, setReassignStaffIds] = useState<Record<string, string>>({})
+  const [rescheduling, setRescheduling] = useState<string | null>(null)
+  const [rescheduleSlots, setRescheduleSlots] = useState<string[]>([])
+  const [rescheduleDate, setRescheduleDate] = useState<Record<string, string>>({})
+  const [rescheduleSlot, setRescheduleSlot] = useState<Record<string, string>>({})
+  const [rescheduleLoading, setRescheduleLoading] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState<string | null>(null)
 const [editingDefault, setEditingDefault] = useState(false)
 const [tempStart, setTempStart] = useState('')
@@ -42,6 +47,7 @@ const [tempEnd, setTempEnd] = useState('')
   const [formBookedSlots, setFormBookedSlots] = useState<any[]>([])
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [cancelConfirm, setCancelConfirm] = useState<string | null>(null)
   const [saveError, setSaveError] = useState('')
   const [breaks, setBreaks] = useState<any[]>([])
 const [editingBreak, setEditingBreak] = useState<any>(null)
@@ -151,18 +157,56 @@ const [newBreakEnd, setNewBreakEnd] = useState('')
     fetchAll()
   }
 
+  async function handleReschedule(bookingId: string) {
+    const slot = rescheduleSlot[bookingId]
+    if (!slot) return
+    setRescheduling(bookingId)
+    try {
+      const booking = bookings.find(b => b.id === bookingId)
+      const { data: staffData } = await supabase
+        .from('staff')
+        .select('name, email')
+        .eq('id', booking.staff_id)
+        .single()
+
+      await supabase.from('bookings').update({
+        booking_datetime: slot,
+        google_event_id: null
+      }).eq('id', bookingId)
+
+      await triggerConfirmationEmail({
+        id: booking.id,
+        customer_name: booking.customer_name,
+        customer_email: booking.customer_email || '',
+        customer_phone: booking.customer_phone || '',
+        booking_datetime: slot,
+        duration_minutes: booking.services?.duration_minutes || 60,
+        service_name: booking.services?.name || '',
+        staff_name: staffData?.name,
+        stylist_email: staffData?.email ?? undefined,
+        old_google_event_id: booking.google_event_id,
+        business_name: 'Luxe Studio',
+        business_address: 'Indiranagar, Bengaluru',
+        business_phone: '+91 98765 43210',
+      })
+
+      setRescheduling(null)
+      setRescheduleSlots([])
+      setRescheduleDate(prev => { const next = { ...prev }; delete next[bookingId]; return next })
+      setRescheduleSlot(prev => { const next = { ...prev }; delete next[bookingId]; return next })
+      fetchAll()
+    } catch (err) {
+      console.error('Reschedule failed:', err)
+      setRescheduling(null)
+    }
+  }
+
   async function handleReassign(bookingId: string) {
     const reassignStaffId = reassignStaffIds[bookingId]
     if (!reassignStaffId) return
     setReassigning(bookingId)
     try {
       const booking = bookings.find(b => b.id === bookingId)
-
-      const { data: oldStaffData } = await supabase
-        .from('staff')
-        .select('google_refresh_token')
-        .eq('id', booking.staff_id)
-        .single()
 
       await supabase.from('bookings').update({
         staff_id: reassignStaffId,
@@ -171,7 +215,7 @@ const [newBreakEnd, setNewBreakEnd] = useState('')
 
       const { data: newStaffData } = await supabase
         .from('staff')
-        .select('google_refresh_token, name')
+        .select('name, email')
         .eq('id', reassignStaffId)
         .single()
 
@@ -184,9 +228,8 @@ const [newBreakEnd, setNewBreakEnd] = useState('')
         duration_minutes: booking.services?.duration_minutes || 60,
         service_name: booking.services?.name || '',
         staff_name: newStaffData?.name,
-        staff_refresh_token: newStaffData?.google_refresh_token,
+        stylist_email: newStaffData?.email ?? undefined,
         old_google_event_id: booking.google_event_id,
-        old_staff_refresh_token: oldStaffData?.google_refresh_token,
         business_name: 'Luxe Studio',
         business_address: 'Indiranagar, Bengaluru',
         business_phone: '+91 98765 43210',
@@ -235,12 +278,6 @@ const [newBreakEnd, setNewBreakEnd] = useState('')
       }
 
       try {
-        let staffRefreshToken = null
-        if (assignedStaff?.id) {
-          const { data: staffData } = await supabase
-            .from('staff').select('google_refresh_token').eq('id', assignedStaff.id).single()
-          staffRefreshToken = staffData?.google_refresh_token
-        }
         await triggerConfirmationEmail({
           id: insertData.id,
           customer_name: formName,
@@ -250,7 +287,7 @@ const [newBreakEnd, setNewBreakEnd] = useState('')
           duration_minutes: formTotalDuration,
           service_name: formServices.map((s: any) => s.name).join(', '),
           staff_name: assignedStaff?.name,
-          staff_refresh_token: staffRefreshToken,
+          stylist_email: assignedStaff?.email ?? undefined,
           business_name: 'Luxe Studio',
           business_address: 'Indiranagar, Bengaluru',
           business_phone: '+91 98765 43210',
@@ -283,6 +320,12 @@ const [newBreakEnd, setNewBreakEnd] = useState('')
   }
 
   async function handleCancel(bookingId: string) {
+    if (cancelConfirm !== bookingId) {
+      setCancelConfirm(bookingId)
+      setTimeout(() => setCancelConfirm(prev => prev === bookingId ? null : prev), 4000)
+      return
+    }
+    setCancelConfirm(null)
     await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', bookingId)
     fetchAll()
   }
@@ -755,43 +798,116 @@ const [newBreakEnd, setNewBreakEnd] = useState('')
                         {b.status}
                       </span>
                       {b.status === 'confirmed' && (
-                        <button onClick={() => handleCancel(b.id)} className="text-xs text-red-500 hover:underline">Cancel</button>
+                        cancelConfirm === b.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-red-600 font-medium">Sure?</span>
+                            <button onClick={() => handleCancel(b.id)} className="text-xs bg-red-500 text-white px-2 py-0.5 rounded">Yes</button>
+                            <button onClick={() => setCancelConfirm(null)} className="text-xs border px-2 py-0.5 rounded">No</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => handleCancel(b.id)} className="text-xs text-red-500 hover:underline">Cancel</button>
+                        )
                       )}
                     </div>
                   </div>
 
                   {needsReassign && (
-                    <div className="mt-3 flex items-center gap-2 pt-3 border-t border-orange-200">
-                      <select
-                        className="flex-1 border rounded-lg p-2 text-sm"
-                        value={reassignStaffIds[b.id] || ''}
-                        onChange={e => setReassignStaffIds(prev => ({ ...prev, [b.id]: e.target.value }))}
-                      >
-                        <option value="">Select new stylist...</option>
-                        {staffWithAvailability.filter(s => s.is_available && s.id !== b.staff_id).map(s => {
-                          const slotStart = new Date(b.booking_datetime)
-                          const slotEnd = new Date(slotStart.getTime() + (b.services?.duration_minutes || 60) * 60000)
-                          const hasConflict = bookings.some(other => {
-                            if (other.staff_id !== s.id || other.status !== 'confirmed' || other.id === b.id) return false
-                            const otherStart = new Date(other.booking_datetime)
-                            const otherDuration = other.services?.duration_minutes || 60
-                            const otherEnd = new Date(otherStart.getTime() + otherDuration * 60000)
-                            return slotStart < otherEnd && slotEnd > otherStart
-                          })
-                          return (
-                            <option key={s.id} value={s.id} disabled={hasConflict}>
-                              {s.name}{hasConflict ? ' — busy' : ''}
-                            </option>
-                          )
-                        })}
-                      </select>
-                      <button
-                        onClick={() => handleReassign(b.id)}
-                        disabled={reassigning === b.id || !reassignStaffIds[b.id]}
-                        className="bg-black text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
-                      >
-                        {reassigning === b.id ? 'Reassigning...' : 'Reassign'}
-                      </button>
+                    <div className="mt-3 pt-3 border-t border-orange-200 space-y-3">
+                      {/* Reassign to different stylist */}
+                      <div className="flex items-center gap-2">
+                        <select
+                          className="flex-1 border rounded-lg p-2 text-sm"
+                          value={reassignStaffIds[b.id] || ''}
+                          onChange={e => setReassignStaffIds(prev => ({ ...prev, [b.id]: e.target.value }))}
+                        >
+                          <option value="">Reassign to different stylist...</option>
+                          {staffWithAvailability.filter(s => s.is_available && s.id !== b.staff_id).map(s => {
+                            const slotStart = new Date(b.booking_datetime)
+                            const slotEnd = new Date(slotStart.getTime() + (b.services?.duration_minutes || 60) * 60000)
+                            const hasConflict = bookings.some(other => {
+                              if (other.staff_id !== s.id || other.status !== 'confirmed' || other.id === b.id) return false
+                              const otherStart = new Date(other.booking_datetime)
+                              const otherDuration = other.services?.duration_minutes || 60
+                              const otherEnd = new Date(otherStart.getTime() + otherDuration * 60000)
+                              return slotStart < otherEnd && slotEnd > otherStart
+                            })
+                            return (
+                              <option key={s.id} value={s.id} disabled={hasConflict}>
+                                {s.name}{hasConflict ? ' — busy' : ''}
+                              </option>
+                            )
+                          })}
+                        </select>
+                        <button
+                          onClick={() => handleReassign(b.id)}
+                          disabled={reassigning === b.id || !reassignStaffIds[b.id]}
+                          className="bg-black text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                        >
+                          {reassigning === b.id ? 'Reassigning...' : 'Reassign'}
+                        </button>
+                      </div>
+
+                      {/* Reschedule with same stylist */}
+                      <div className="border-t border-orange-100 pt-3">
+                        <p className="text-xs text-orange-700 font-medium mb-2">Or reschedule with {b.staff?.name} at a new time</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <input
+                            type="date"
+                            className="border rounded-lg p-2 text-sm"
+                            min={new Date().toISOString().split('T')[0]}
+                            value={rescheduleDate[b.id] || ''}
+                            onChange={async e => {
+                              const date = e.target.value
+                              setRescheduleDate(prev => ({ ...prev, [b.id]: date }))
+                              setRescheduleSlot(prev => { const next = { ...prev }; delete next[b.id]; return next })
+                              if (!date) return
+                              setRescheduleLoading(true)
+                              const [booked, enrichedStaff, breaks] = await Promise.all([
+                                getBookedSlots(BUSINESS_ID, b.staff_id, date),
+                                getStaffAvailability(BUSINESS_ID, date),
+                                getBreaks(BUSINESS_ID)
+                              ])
+                              const slots = generateAvailableSlots(
+                                booked,
+                                b.services?.duration_minutes || 60,
+                                date,
+                                b.staff_id,
+                                enrichedStaff.filter(s => s.id === b.staff_id),
+                                breaks
+                              )
+                              setRescheduleSlots(slots)
+                              setRescheduleLoading(false)
+                            }}
+                          />
+                          {rescheduleLoading && <span className="text-xs text-gray-400">Loading slots...</span>}
+                          {rescheduleDate[b.id] && !rescheduleLoading && rescheduleSlots.length === 0 && (
+                            <span className="text-xs text-gray-400">No slots available</span>
+                          )}
+                          {rescheduleSlots.length > 0 && (
+                            <select
+                              className="border rounded-lg p-2 text-sm flex-1"
+                              value={rescheduleSlot[b.id] || ''}
+                              onChange={e => setRescheduleSlot(prev => ({ ...prev, [b.id]: e.target.value }))}
+                            >
+                              <option value="">Pick a time...</option>
+                              {rescheduleSlots.map(slot => (
+                                <option key={slot} value={slot}>
+                                  {new Date(slot).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          {rescheduleSlot[b.id] && (
+                            <button
+                              onClick={() => handleReschedule(b.id)}
+                              disabled={rescheduling === b.id}
+                              className="bg-black text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                            >
+                              {rescheduling === b.id ? 'Saving...' : 'Confirm Reschedule'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

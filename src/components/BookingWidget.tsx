@@ -71,6 +71,14 @@ export default function BookingWidget() {
       setError('Please fill in all fields')
       return
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+      setError('Please enter a valid email address')
+      return
+    }
+    if (customerPhone.length !== 10) {
+      setError('Please enter a valid 10-digit phone number')
+      return
+    }
 
     setLoading(true)
     setError('')
@@ -96,15 +104,7 @@ export default function BookingWidget() {
         booking_datetime: selectedSlot,
       }, selectedServices.map(s => s.id))
 
-      let staffRefreshToken = null
-      if (assignedStaff?.id) {
-        const { data: staffData } = await supabase
-          .from('staff')
-          .select('google_refresh_token')
-          .eq('id', assignedStaff.id)
-          .single()
-        staffRefreshToken = staffData?.google_refresh_token
-      }
+      
 
       await triggerConfirmationEmail({
         id: booking.id,
@@ -115,7 +115,7 @@ export default function BookingWidget() {
         duration_minutes: totalDuration,
         service_name: selectedServices.map(s => s.name).join(', '),
         staff_name: assignedStaff?.name,
-        staff_refresh_token: staffRefreshToken,
+        stylist_email: assignedStaff?.email ?? undefined,
         business_name: 'Luxe Studio',
         business_address: 'Indiranagar, Bengaluru',
         business_phone: '+91 98765 43210',
@@ -282,14 +282,29 @@ export default function BookingWidget() {
             className="w-full border rounded-lg p-3"
             value={customerEmail}
             onChange={e => setCustomerEmail(e.target.value)}
+            onBlur={e => {
+              const val = e.target.value
+              if (val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+                setError('Please enter a valid email address')
+              } else {
+                setError('')
+              }
+            }}
           />
-          <input
-            type="tel"
-            placeholder="Phone Number"
-            className="w-full border rounded-lg p-3"
-            value={customerPhone}
-            onChange={e => setCustomerPhone(e.target.value)}
-          />
+          <div className="flex items-center border rounded-lg overflow-hidden">
+            <span className="px-3 py-3 bg-gray-50 text-gray-400 text-sm border-r select-none">+91</span>
+            <input
+              type="tel"
+              placeholder="10-digit phone number"
+              className="flex-1 p-3 outline-none text-sm"
+              value={customerPhone}
+              maxLength={10}
+              onChange={e => {
+                const val = e.target.value.replace(/\D/g, '')
+                setCustomerPhone(val)
+              }}
+            />
+          </div>
         </div>
       )}
 

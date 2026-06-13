@@ -86,10 +86,12 @@ export function generateAvailableSlots(
       for (let m = 0; m < 60; m += slotInterval) {
         if (h === startHour && m < startMin) continue
         const slotTimeIST = new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+05:30`)
-        // Don't show slots that have already passed or are less than 1 hour away
-const now = new Date()
-const oneHourFromNow = new Date(now.getTime() + 60 * 60000)
-if (slotTimeIST < oneHourFromNow) continue
+        // Only apply the 1-hour minimum notice check for today
+        const todayString = new Date().toISOString().split('T')[0]
+        if (date === todayString) {
+          const oneHourFromNow = new Date(new Date().getTime() + 60 * 60000)
+          if (slotTimeIST < oneHourFromNow) continue
+        }
         const slotEndIST = new Date(slotTimeIST.getTime() + serviceDuration * 60000)
         if (slotEndIST > endOfBusinessIST) continue
 
@@ -127,10 +129,12 @@ if (!hasConflict && !duringBreak) slots.push(slotTimeIST.toISOString())
       for (let m = 0; m < 60; m += slotInterval) {
         if (h === startHour && m < startMin) continue
         const slotTimeIST = new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+05:30`)
-        // Don't show slots that have already passed or are less than 1 hour away
-const now = new Date()
-const oneHourFromNow = new Date(now.getTime() + 60 * 60000)
-if (slotTimeIST < oneHourFromNow) continue
+        // Only apply the 1-hour minimum notice check for today
+        const todayString = new Date().toISOString().split('T')[0]
+        if (date === todayString) {
+          const oneHourFromNow = new Date(new Date().getTime() + 60 * 60000)
+          if (slotTimeIST < oneHourFromNow) continue
+        }
         const slotEndIST = new Date(slotTimeIST.getTime() + serviceDuration * 60000)
         if (slotEndIST > endOfBusinessIST) continue
 
@@ -213,11 +217,10 @@ export async function triggerConfirmationEmail(bookingData: {
   customer_phone: string
   booking_datetime: string
   old_google_event_id?: string
-old_staff_refresh_token?: string
   duration_minutes: number
   service_name: string
   staff_name?: string
-  staff_refresh_token?: string
+  stylist_email?: string
   business_name: string
   business_address: string
   business_phone: string
