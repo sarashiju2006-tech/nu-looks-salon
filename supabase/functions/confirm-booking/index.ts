@@ -79,6 +79,14 @@ serve(async (req) => {
     const booking = await req.json();
     const accessToken = await getAdminAccessToken();
 
+    // Cancel-only path — just delete the event
+    if (booking.cancel_only && booking.old_google_event_id) {
+      await deleteCalendarEvent(booking.old_google_event_id, accessToken);
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+
     // Delete old event if reassigning or rescheduling
     if (booking.old_google_event_id) {
       await deleteCalendarEvent(booking.old_google_event_id, accessToken);

@@ -18,6 +18,7 @@ function Setup() {
   const [newEmail, setNewEmail] = useState('')
   const [editingStaff, setEditingStaff] = useState<any>(null)
   const [saving, setSaving] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   const BUSINESS_ID = import.meta.env.VITE_BUSINESS_ID
 
@@ -59,8 +60,17 @@ function Setup() {
   }
 
   async function handleDeleteStaff(staffId: string) {
-    if (!confirm('Delete this stylist? Their bookings will remain but they will be unassigned.')) return
-    await supabase.from('staff').delete().eq('id', staffId)
+    if (deleteConfirm !== staffId) {
+      setDeleteConfirm(staffId)
+      setTimeout(() => setDeleteConfirm(prev => prev === staffId ? null : prev), 4000)
+      return
+    }
+    setDeleteConfirm(null)
+    const { error } = await supabase.from('staff').delete().eq('id', staffId)
+    if (error) {
+      console.error('Delete error:', error)
+      return
+    }
     loadStaff()
   }
 
@@ -109,17 +119,8 @@ function Setup() {
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-lg mx-auto">
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-2xl font-semibold">Stylist Setup</h1>
-          <button
-            onClick={() => setShowAddForm(v => !v)}
-            className="bg-black text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-800"
-          >
-            + Add Stylist
-          </button>
-        </div>
+        <h1 className="text-2xl font-semibold mb-2">Stylist Setup</h1>
         <p className="text-muted-foreground mb-8">Manage stylists. Their email is used for calendar invites on each booking.</p>
-
         {showAddForm && (
           <div className="mb-6 p-4 border border-border rounded-xl bg-card">
             <h2 className="font-medium mb-3 text-sm">New Stylist</h2>
@@ -157,7 +158,7 @@ function Setup() {
           </div>
         )}
 
-        <div className="space-y-4">
+        <div className="space-y-4 mb-6">
           {staff.map(s => (
             <div key={s.id} className="border rounded-xl overflow-hidden">
               {editingStaff?.id === s.id ? (
@@ -195,17 +196,34 @@ function Setup() {
                     >
                       Edit
                     </button>
-                    <button
-                      onClick={() => handleDeleteStaff(s.id)}
-                      className="text-xs text-red-500 hover:underline"
-                    >
-                      Delete
-                    </button>
+                    {deleteConfirm === s.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-red-600 font-medium">Sure?</span>
+                        <button onClick={() => handleDeleteStaff(s.id)} className="text-xs bg-red-500 text-white px-2 py-0.5 rounded">Yes</button>
+                        <button onClick={() => setDeleteConfirm(null)} className="text-xs border px-2 py-0.5 rounded">No</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleDeleteStaff(s.id)}
+                        className="text-xs text-red-500 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
             </div>
           ))}
+        </div>
+
+        <div className="flex justify-center mt-6">
+          <button
+            onClick={() => setShowAddForm(v => !v)}
+            className="bg-black text-white text-sm px-6 py-2.5 rounded-lg hover:bg-gray-800"
+          >
+            + Add Stylist
+          </button>
         </div>
       </div>
     </div>

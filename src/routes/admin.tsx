@@ -326,7 +326,27 @@ const [newBreakEnd, setNewBreakEnd] = useState('')
       return
     }
     setCancelConfirm(null)
+    const booking = bookings.find(b => b.id === bookingId)
     await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', bookingId)
+    if (booking?.google_event_id) {
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+        await fetch(`${supabaseUrl}/functions/v1/confirm-booking`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseAnonKey}`
+          },
+          body: JSON.stringify({
+            cancel_only: true,
+            old_google_event_id: booking.google_event_id,
+          })
+        })
+      } catch (e) {
+        console.error('Calendar delete failed:', e)
+      }
+    }
     fetchAll()
   }
 
