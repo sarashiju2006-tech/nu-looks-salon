@@ -4,7 +4,7 @@ import heroImg from "@/assets/hero.jpg";
 import g1 from "@/assets/g1.jpg";
 import g2 from "@/assets/g2.jpg";
 import g3 from "@/assets/g3.jpg";
-import g4 from "@/assets/g4.jpg";
+import g4 from "@/assets/g4.png";
 import g5 from "@/assets/g5.jpg";
 import g6 from "@/assets/g6.jpg";
 import BookingWidget from '@/components/BookingWidget'
@@ -14,9 +14,9 @@ import BookingWidget from '@/components/BookingWidget'
 // ============================================================
 const config = {
   brand: {
-    name: "Luxe Studio",
-    tagline: "Bespoke hair, crafted in the heart of Bengaluru.",
-    location: "Indiranagar, Bengaluru",
+    name: "Nakshatra Salon",
+    tagline: "Premium grooming for men and women, in the heart of Ananth Nagar.",
+    location: "Ananth Nagar, Bengaluru",
   },
   nav: [
     { label: "About", href: "#about" },
@@ -25,41 +25,59 @@ const config = {
     { label: "Contact", href: "#contact" },
   ],
   about: {
-    eyebrow: "About the studio",
-    title: "A quieter kind of luxury.",
-    body: "Tucked away on a leafy lane in Indiranagar, Luxe Studio is a small team of senior stylists obsessed with healthy hair and honest advice. We take fewer clients a day so every visit feels unhurried, just thoughtful consultation, considered craft, and a cup of chai while you settle in.",
+    eyebrow: "About the salon",
+    title: "Your neighbourhood salon, elevated.",
+    body: "Nakshatra Salon is Ananth Nagar's go-to destination for expert hair and beauty services. Whether you're coming in for a quick trim or a full hair transformation, our experienced team treats every client with care, precision, and premium products.",
   },
   services: [
-    { name: "Signature Haircut", desc: "Consultation, wash, precision cut and blow-dry.", price: "₹500" },
-    { name: "Hair Color", desc: "Global color using ammonia-free premium brands.", price: "₹1,500" },
-    { name: "Highlights & Balayage", desc: "Hand-painted dimension tailored to your tone.", price: "₹3,500" },
-    { name: "Keratin Treatment", desc: "Frizz-free, salon-smooth finish for up to 5 months.", price: "₹4,500" },
-    { name: "Hair Spa & Repair", desc: "Deep-conditioning ritual for tired, thirsty hair.", price: "₹1,200" },
-    { name: "Bridal Styling", desc: "Trial + on-the-day hair styling for your wedding.", price: "₹8,000" },
-    { name: "Scalp Treatment", desc: "Targeted treatment for dry, oily or sensitive scalp.", price: "₹1,800" },
-    { name: "Olaplex Treatment", desc: "Bond-building repair for chemically treated hair.", price: "₹2,500" },
-    { name: "Blowout & Styling", desc: "Professional blowdry and finish for any occasion.", price: "₹800" },
+    { name: "Haircut (Women)", desc: "One-length, advance or creative cut — consultation included.", price: "₹599" },
+    { name: "Basic Haircut (Women)", desc: "Clean one-length cut with styling.", price: "₹599" },
+    { name: "Advanced Haircut (Women)", desc: "Layered or structured cut with consultation.", price: "₹1,099" },
+    { name: "Creative Haircut (Women)", desc: "Custom creative styling cut.", price: "₹1,199" },
+    { name: "Haircut (Men)", desc: "Precision cut tailored to your face shape and style.", price: "₹250" },
+    { name: "Child Haircut", desc: "Gentle, quick cut for kids — boys and girls.", price: "₹250" },
+    { name: "Shave", desc: "Clean razor shave with hot towel finish.", price: "₹150" },
+    { name: "Beard Trim", desc: "Sculpted beard trim to your preferred shape.", price: "₹200" },
+    { name: "Change of Style", desc: "New look consultation and restyle.", price: "₹350" },
+    { name: "Hair Wash + Haircut", desc: "Shampoo, conditioning and precision cut.", price: "₹300" },
+    { name: "Hair Fall Treatment", desc: "Targeted scalp treatment to reduce hair fall.", price: "₹999" },
+    { name: "Dandruff Treatment", desc: "Deep cleanse treatment for dry or flaky scalp.", price: "₹999" },
+    { name: "Schwarzkopf Spa", desc: "Premium conditioning spa using Schwarzkopf products.", price: "₹1,199" },
+    { name: "Keratin Hair Spa", desc: "Keratin-infused deep conditioning treatment.", price: "₹999" },
+    { name: "3TENX Spa", desc: "Advanced repair spa for damaged or chemically treated hair.", price: "₹1,999" },
+    { name: "Herbal Colour", desc: "Natural herbal colour for grey coverage.", price: "₹799" },
+    { name: "Schwarzkopf Colour", desc: "Premium ammonia-free global colour.", price: "₹799" },
+    { name: "Global Colour", desc: "Full head colour transformation.", price: "₹1,500" },
+    { name: "Smoothing", desc: "Long-lasting frizz-free smoothing treatment.", price: "₹2,999" },
+    { name: "Straightening", desc: "Permanent straightening for all hair types.", price: "₹2,999" },
+    { name: "Keratin Treatment", desc: "Bond-strengthening treatment for smooth, shiny hair.", price: "₹3,000" },
+    { name: "Botox", desc: "Hair botox for deep repair and glossy finish.", price: "₹3,499" },
+    { name: "Nanoplastia", desc: "Organic smoothing treatment for lasting softness.", price: "₹2,999" },
+    { name: "Deep Conditioning", desc: "Intensive moisture treatment for dry hair.", price: "₹399" },
+    { name: "Shampoo & Conditioning", desc: "Wash and condition with professional products.", price: "₹499" },
+    { name: "Shampoo, Conditioning & Setting", desc: "Full wash, condition and blowdry finish.", price: "₹999" },
+    { name: "Hair Spa Schwarzkopf (Women)", desc: "Premium Schwarzkopf spa for women.", price: "₹1,499" },
   ],
   gallery: [
-    { src: g1, alt: "Glossy styled hair", h: "row-span-2" },
-    { src: g2, alt: "Precision haircut" },
-    { src: g3, alt: "Caramel balayage" },
-    { src: g4, alt: "Premium salon products", h: "" },
-    { src: g5, alt: "Bridal updo", h: "row-span-2" },
-    { src: g6, alt: "Mens premium haircut" },
+    { src: g1, alt: "Salon interior" },
+    { src: g2, alt: "Hair styling", h: "row-span-2" },
+    { src: g3, alt: "Men's haircut" },
+    { src: g4, alt: "Hair colour" },
+    { src: g5, alt: "Hair treatment", h: "row-span-2" },
+    { src: g6, alt: "Styling finish" },
   ],
   booking: {
     title: "Reserve your chair",
-    body: "Pick a time that suits you, confirmation lands in your inbox within minutes.",
-    embedUrl: "https://cal.com/sara-ggak17/hair-appointment", // drop in Cal.com embed URL here
+    body: "Pick a time that suits you. We'll confirm your appointment instantly.",
+    embedUrl: "",
   },
   contact: {
-    address: "238, 12th Main Rd, HAL 2nd Stage, Indiranagar, Bengaluru 560008",
-    phone: "+91 7204926382",
-    instagram: "@luxestudio.blr",
+    address: "No.182, Hebbagodi 13th Cross, 4th Main Road, 1st Floor, Above Baskin Robbins, Shree Ananth Nagar Layout, Bengaluru 560100",
+    phone: "+91 7996622566",
+    instagram: "@nakshatrasalon",
     instagramUrl: "https://instagram.com",
-    mapsEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3888.0241555932125!2d77.63940697460791!3d12.970306087345012!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bae16a7fb45b053%3A0xd5c3780186e8c3!2s12th%20Main%20Rd%2C%20Indiranagar%2C%20Bengaluru%2C%20Karnataka%20560008!5e0!3m2!1sen!2sin!4v1780654927086!5m2!1sen!2sin",
-    hours: "Tue – Sun · 10:00 am – 8:00 pm",
+    mapsEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3890.115255663293!2d77.68605447531759!3d12.835828087467156!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bae6daddf67a7e3%3A0x12e3986cbb29543!2sNakshatra%20Salon%20for%20men%20and%20women!5e0!3m2!1sen!2sin!4v1752900764844!5m2!1sen!2sin",
+    hours: "Mon – Sun · 10:00 am – 8:00 pm",
   },
   cta: "Book Appointment",
 };
@@ -71,16 +89,8 @@ export const Route = createFileRoute("/")({
 function Index() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
-  const [showAllServices, setShowAllServices] = useState(false);
-  useEffect(() => {
-  if (typeof window !== "undefined" && (window as any).Cal) {
-    (window as any).Cal("init", "hair-appointment", {origin: "https://app.cal.com"});
-    (window as any).Cal.ns["hair-appointment"]("ui", {
-      hideEventTypeDetails: false,
-      layout: "month_view"
-    });
-  }
-}, []);
+  const [visibleCount, setVisibleCount] = useState(3);
+  
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
     onScroll();
@@ -102,7 +112,7 @@ function Index() {
     );
     document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
     return () => io.disconnect();
-  }, [showAllServices]);
+  }, [visibleCount]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -239,7 +249,7 @@ function Index() {
             </p>
           </div>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-  {(showAllServices ? config.services : config.services.slice(0, 6)).map((s) => (
+  {config.services.slice(0, visibleCount).map((s) => (
     <article
       key={s.name}
       className="reveal group rounded-2xl border border-border/60 bg-card p-7 transition-all duration-300 hover:-translate-y-1 hover:border-accent/60 hover:shadow-[0_20px_60px_-30px_rgba(0,0,0,0.25)]"
@@ -254,14 +264,14 @@ function Index() {
   ))}
 </div>
 
-{config.services.length > 6 && (
+{visibleCount < config.services.length && (
   <div className="mt-10 text-center">
     <button
-      onClick={() => setShowAllServices(v => !v)}
+      onClick={() => setVisibleCount(v => v + 3)}
       className="inline-flex items-center gap-2 rounded-full border border-border px-7 py-3 text-sm transition-colors hover:border-accent hover:text-accent"
     >
-      {showAllServices ? 'Show less' : `View full menu (${config.services.length} services)`}
-      <span aria-hidden>{showAllServices ? '↑' : '↓'}</span>
+      Show more services
+      <span aria-hidden>↓</span>
     </button>
   </div>
 )}

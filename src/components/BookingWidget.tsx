@@ -291,6 +291,7 @@ export default function BookingWidget() {
               }
             }}
           />
+          <p className="text-xs text-gray-400">Your email is only used to send a booking confirmation. We'll never send promotional messages.</p>
           <div className="flex items-center border rounded-lg overflow-hidden">
             <span className="px-3 py-3 bg-gray-50 text-gray-400 text-sm border-r select-none">+91</span>
             <input
