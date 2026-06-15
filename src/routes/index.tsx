@@ -74,7 +74,7 @@ const config = {
   contact: {
     address: "No.182, Hebbagodi 13th Cross, 4th Main Road, 1st Floor, Above Baskin Robbins, Shree Ananth Nagar Layout, Bengaluru 560100",
     phone: "+91 7996622566",
-    instagram: "@nakshatrasalon",
+    instagram: "@nakshatrasalons",
     instagramUrl: "https://instagram.com",
     mapsEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3890.115255663293!2d77.68605447531759!3d12.835828087467156!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bae6daddf67a7e3%3A0x12e3986cbb29543!2sNakshatra%20Salon%20for%20men%20and%20women!5e0!3m2!1sen!2sin!4v1752900764844!5m2!1sen!2sin",
     hours: "Mon – Sun · 10:00 am – 8:00 pm",
