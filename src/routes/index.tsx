@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import heroImg from "@/assets/hero.jpeg";
+import heroImg from "@/assets/hero2.jpg";
 import g1 from "@/assets/g1.jpg";
 import g2 from "@/assets/g2.jpg";
 import g3 from "@/assets/g3.jpg";
@@ -72,11 +72,11 @@ const config = {
     embedUrl: "",
   },
   contact: {
-    address: "No.182, Hebbagodi 13th Cross, 4th Main Road, 1st Floor, Above Baskin Robbins, Shree Ananth Nagar Layout, Bengaluru 560100",
+    address: "main road, near to ICICI bank, Ananth nagar, Phase 1, Kammasandra, Electronic City, Hebbagodi, Karnataka 560100",
     phone: "+91 72040 63322",
     instagram: "@nulooks_ananthnagar",
     instagramUrl: "https://instagram.com",
-    mapsEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3890.115255663293!2d77.68605447531759!3d12.835828087467156!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bae6daddf67a7e3%3A0x12e3986cbb29543!2sNakshatra%20Salon%20for%20men%20and%20women!5e0!3m2!1sen!2sin!4v1752900764844!5m2!1sen!2sin",
+    mapsEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3459.575251761621!2d77.69062597507416!3d12.835347887467584!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bae6d32a002db97%3A0x111cb489ba0f4e5f!2sNu%20Looks%20Unisex%20salon!5e1!3m2!1sen!2sin!4v1781505952673!5m2!1sen!2sin",
     hours: "Mon – Sun · 10:00 am – 8:00 pm",
   },
   cta: "Book Appointment",
@@ -191,7 +191,7 @@ function Index() {
           width={1536}
           height={1920}
           className="absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition: 'center 20%' }}
+          style={{ objectPosition: 'center 50%' }}
         />
         <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/20 to-transparent" />
         <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/40 to-transparent" />
