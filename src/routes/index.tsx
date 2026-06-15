@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import heroImg from "@/assets/hero.jpg";
+import heroImg from "@/assets/hero.jpeg";
 import g1 from "@/assets/g1.jpg";
 import g2 from "@/assets/g2.jpg";
 import g3 from "@/assets/g3.jpg";
@@ -14,7 +14,7 @@ import BookingWidget from '@/components/BookingWidget'
 // ============================================================
 const config = {
   brand: {
-    name: "Nakshatra Salon",
+    name: "Nu Looks Salon",
     tagline: "Premium grooming for men and women, in the heart of Ananth Nagar.",
     location: "Ananth Nagar, Bengaluru",
   },
@@ -27,7 +27,7 @@ const config = {
   about: {
     eyebrow: "About the salon",
     title: "Your neighbourhood salon, elevated.",
-    body: "Nakshatra Salon is Ananth Nagar's go-to destination for expert hair and beauty services. Whether you're coming in for a quick trim or a full hair transformation, our experienced team treats every client with care, precision, and premium products.",
+    body: "Nu Looks Salon is Ananth Nagar's go-to destination for expert hair and beauty services. Whether you're coming in for a quick trim or a full hair transformation, our experienced team treats every client with care, precision, and premium products.",
   },
   services: [
     { name: "Haircut (Women)", desc: "One-length, advance or creative cut — consultation included.", price: "₹599" },
@@ -73,8 +73,8 @@ const config = {
   },
   contact: {
     address: "No.182, Hebbagodi 13th Cross, 4th Main Road, 1st Floor, Above Baskin Robbins, Shree Ananth Nagar Layout, Bengaluru 560100",
-    phone: "+91 7996622566",
-    instagram: "@nakshatrasalons",
+    phone: "+91 72040 63322",
+    instagram: "@nulooks_ananthnagar",
     instagramUrl: "https://instagram.com",
     mapsEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3890.115255663293!2d77.68605447531759!3d12.835828087467156!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bae6daddf67a7e3%3A0x12e3986cbb29543!2sNakshatra%20Salon%20for%20men%20and%20women!5e0!3m2!1sen!2sin!4v1752900764844!5m2!1sen!2sin",
     hours: "Mon – Sun · 10:00 am – 8:00 pm",
@@ -187,12 +187,14 @@ function Index() {
       <section id="top" className="relative min-h-[100svh] w-full overflow-hidden">
         <img
           src={heroImg}
-          alt="Luxe Studio salon interior"
+          alt="Nu Looks salon interior"
           width={1536}
           height={1920}
           className="absolute inset-0 h-full w-full object-cover"
+          style={{ objectPosition: 'center 20%' }}
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-black/70" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/20 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/40 to-transparent" />
         <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-6xl flex-col justify-end px-5 pb-16 pt-32 md:justify-center md:pb-24">
           <p className="reveal mb-5 text-xs uppercase tracking-[0.35em] text-accent">
             {config.brand.location}
